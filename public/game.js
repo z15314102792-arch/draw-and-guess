@@ -98,7 +98,7 @@ let offscreenCtx = null;
 
 // ============ Socket 连接 ============
 function connectSocket() {
-  socket = io({ transports: ['websocket', 'polling'] });
+  socket = io();
 
   socket.on('connect', () => { console.log('[Socket] 已连接'); });
   socket.on('connect_error', (err) => {
