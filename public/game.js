@@ -835,6 +835,8 @@ let soloCamX=0,soloCamY=0,soloCamZoom=1,soloTwoFinger=false;
 let soloPinching=false,soloPinchStartDist=0,soloPinchStartZoom=1,soloPinchMidX=0,soloPinchMidY=0;
 let soloPanning=false,soloLastPanX=0,soloLastPanY=0,soloIsPanMode=false;
 let brushTipCache=null,brushTipCacheKey='',rainbowHue=0;
+let soloSessionStart=0,soloReplayMode=false,soloReplayTimer=null,soloReplaySpeed=2,soloReplayProgress=0,soloReplayTotalTime=0;
+let soloReplayPaused=false;
 function srand(seed){var x=Math.sin(seed*9301+49297)*233280;return x-Math.floor(x);}
 let soloRafPending=false,soloCachedRect=null;
 function scheduleRedraw(){if(soloRafPending)return;soloRafPending=true;requestAnimationFrame(function(){soloRafPending=false;doRedrawAllStrokes();});}
@@ -1005,7 +1007,7 @@ function getTwoFingerMid(e){if(!soloCachedRect)soloCachedRect=soloCanvas.getBoun
 
 function soloStart(e){if(soloTwoFinger||soloPinching)return;soloCachedRect=null;if(soloIsPanMode){soloPanning=true;var p=getSoloPos(e);soloLastPanX=p.rawX;soloLastPanY=p.rawY;return;}e.preventDefault();soloDrawing=true;soloLastPos=getSoloPos(e);soloPoints=[soloLastPos];}
 function soloMove(e){if(soloPinching)return soloPinchMove(e);if(soloPanning){e.preventDefault();var p=getSoloPos(e);soloCamX+=p.rawX-soloLastPanX;soloCamY+=p.rawY-soloLastPanY;soloLastPanX=p.rawX;soloLastPanY=p.rawY;scheduleRedraw();return;}if(!soloDrawing)return;e.preventDefault();var pt=getSoloPos(e);if(Math.abs(pt.x-soloLastPos.x)<0.5&&Math.abs(pt.y-soloLastPos.y)<0.5)return;soloPoints.push(pt);soloCtx.setTransform(1,0,0,1,0,0);soloCtx.scale(window.devicePixelRatio||1,window.devicePixelRatio||1);soloCtx.translate(soloCamX,soloCamY);soloCtx.scale(soloCamZoom,soloCamZoom);drawLiveSegment(soloLastPos,pt);soloLastPos=pt;}
-function soloEnd(e){if(soloPinching){soloPinching=false;soloTwoFinger=e.touches?e.touches.length>=2:false;setTimeout(function(){soloZoomHint.classList.add('hidden');},1500);return;}if(soloPanning){soloPanning=false;return;}if(!soloDrawing)return;e.preventDefault();soloDrawing=false;if(soloPoints.length>=1){var pts=soloPoints.length>1?soloPoints.slice():[soloPoints[0],Object.assign({},soloPoints[0])];soloUndoStack=[];soloStrokes.push({brush:soloBrush,color:soloColor,size:soloSize,opacity:soloOpacity,hardness:soloHardness,points:pts,_hueOffset:rainbowHue,_seed:Math.floor(Math.random()*100000)});updateUndoRedoBtns();rainbowHue=(rainbowHue+37)%360;}soloPoints=[];}
+function soloEnd(e){if(soloPinching){soloPinching=false;soloTwoFinger=e.touches?e.touches.length>=2:false;setTimeout(function(){soloZoomHint.classList.add('hidden');},1500);return;}if(soloPanning){soloPanning=false;return;}if(!soloDrawing)return;e.preventDefault();soloDrawing=false;if(soloPoints.length>=1){var pts=soloPoints.length>1?soloPoints.slice():[soloPoints[0],Object.assign({},soloPoints[0])];soloUndoStack=[];soloStrokes.push({brush:soloBrush,color:soloColor,size:soloSize,opacity:soloOpacity,hardness:soloHardness,points:pts,_hueOffset:rainbowHue,_seed:Math.floor(Math.random()*100000),_startTime:Date.now()-soloSessionStart});updateUndoRedoBtns();rainbowHue=(rainbowHue+37)%360;}soloPoints=[];}
 
 function drawLiveSegment(from,to){
   var ctx=soloCtx;ctx.save();ctx.lineCap='round';ctx.lineJoin='round';ctx.globalAlpha=soloOpacity;
@@ -1112,7 +1114,61 @@ soloUndoBtn.addEventListener('click',function(){if(!soloStrokes.length)return;so
 soloRedoBtn.addEventListener('click',function(){if(!soloUndoStack.length)return;soloStrokes.push(soloUndoStack.pop());doRedrawAllStrokes();updateUndoRedoBtns();});
 soloClearBtn.addEventListener('click',function(){if(!soloStrokes.length)return;if(confirm('确定清空画布吗？')){soloStrokes=[];soloUndoStack=[];doRedrawAllStrokes();updateUndoRedoBtns();}});
 soloSaveBtn.addEventListener('click',function(){var a=document.createElement('a');a.download='画作_'+new Date().toISOString().slice(0,10)+'.png';a.href=soloCanvas.toDataURL('image/png');a.click();showToast('已保存');});
-function updateUndoRedoBtns(){soloUndoBtn.disabled=!soloStrokes.length;soloRedoBtn.disabled=!soloUndoStack.length;}
+function updateUndoRedoBtns(){soloUndoBtn.disabled=!soloStrokes.length;soloRedoBtn.disabled=!soloUndoStack.length;var rb=dq('#solo-replay-btn');if(rb)rb.disabled=!soloStrokes.length;}
+
+  // --- 回放功能 v4.0 ---
+  function startSoloReplay(){
+    if(!soloStrokes.length)return;
+    soloReplayMode=true;soloReplayPaused=false;soloReplayProgress=0;
+    soloReplayTotalTime=soloStrokes[soloStrokes.length-1]._startTime+800;
+    var rb=dq('#solo-replay-bar');if(rb)rb.classList.remove('hidden');
+    soloCanvas.style.cursor='default';
+    doReplayRedraw();
+    soloReplayTimer=requestAnimationFrame(replayFrame);
+  }
+  function stopSoloReplay(){
+    soloReplayMode=false;soloReplayPaused=false;
+    if(soloReplayTimer){cancelAnimationFrame(soloReplayTimer);soloReplayTimer=null;}
+    var rb=dq('#solo-replay-bar');if(rb)rb.classList.add('hidden');
+    soloCanvas.style.cursor=soloIsPanMode?'grab':'crosshair';
+    doRedrawAllStrokes();
+  }
+  function replayFrame(ts){
+    if(!soloReplayMode)return;
+    if(!soloReplayPaused){
+      soloReplayProgress+=16.67*soloReplaySpeed;
+      if(soloReplayProgress>=soloReplayTotalTime){soloReplayProgress=soloReplayTotalTime;doReplayRedraw();stopSoloReplay();return;}
+      doReplayRedraw();
+    }
+    soloReplayTimer=requestAnimationFrame(replayFrame);
+  }
+  function doReplayRedraw(){
+    var w=parseFloat(soloCanvas.style.width),h=parseFloat(soloCanvas.style.height);
+    var dpr=window.devicePixelRatio||1;
+    soloCtx.setTransform(dpr,0,0,dpr,0,0);
+    soloCtx.clearRect(0,0,w,h);soloCtx.fillStyle='#FFFFFF';soloCtx.fillRect(0,0,w,h);
+    soloCtx.translate(soloCamX,soloCamY);soloCtx.scale(soloCamZoom,soloCamZoom);
+    for(var i=0;i<soloStrokes.length;i++){
+      var s=soloStrokes[i];
+      if(s._startTime>soloReplayProgress)break;
+      renderStroke(s);
+    }
+    updateReplayProgressUI();
+  }
+  function toggleReplayPause(){soloReplayPaused=!soloReplayPaused;var pb=dq('#solo-replay-pause');if(pb)pb.textContent=soloReplayPaused?'▶':'⏸';}
+  function changeReplaySpeed(sp){soloReplaySpeed=sp;var bb=dq('#solo-replay-bar');if(bb)bb.querySelectorAll('.replay-speed-btn').forEach(function(b){b.classList.toggle('active',+b.dataset.sp===sp);});}
+  function updateReplayProgressUI(){
+    var pct=soloReplayTotalTime?Math.round(soloReplayProgress/soloReplayTotalTime*100):0;
+    var fill=dq('#solo-replay-fill');if(fill)fill.style.width=pct+'%';
+    var time=dq('#solo-replay-time');if(time)time.textContent=(soloReplayProgress/1000).toFixed(1)+'s';
+  }
+  // 回放按钮事件
+  (function(){
+    var btn=dq('#solo-replay-btn');if(btn)btn.addEventListener('click',function(){if(soloReplayMode){stopSoloReplay();return;}startSoloReplay();});
+    var pause=dq('#solo-replay-pause');if(pause)pause.addEventListener('click',toggleReplayPause);
+    var stop=dq('#solo-replay-stop');if(stop)stop.addEventListener('click',stopSoloReplay);
+    var bar=dq('#solo-replay-bar');if(bar)bar.querySelectorAll('.replay-speed-btn').forEach(function(b){b.addEventListener('click',function(){changeReplaySpeed(+b.dataset.sp);});});
+  })();
 
 // collapse
 (function(){var b=dq('#solo-toggle-toolbar');if(b)b.addEventListener('click',function(){soloToolbarCollapsed=!soloToolbarCollapsed;var tb=dq('#solo-toolbar');if(tb)tb.classList.toggle('collapsed',soloToolbarCollapsed);b.textContent=soloToolbarCollapsed?'▲':'▼';});})();
@@ -1125,7 +1181,7 @@ if(eb)eb.addEventListener('click',function(){soloImmersed=false;var t=dq('#solo-
 soloCanvas.addEventListener('click',function(e){if(!soloImmersed)return;var t=dq('#solo-top-bar');if(t)t.classList.remove('immersed');var b=dq('#solo-toolbar');if(b)b.classList.remove('immersed');var eb=dq('#solo-exit-immerse');if(eb)eb.classList.remove('hidden');clearTimeout(soloImmersedTimeout);soloImmersedTimeout=setTimeout(function(){if(soloImmersed){var t2=dq('#solo-top-bar');if(t2)t2.classList.add('immersed');var b2=dq('#solo-toolbar');if(b2)b2.classList.add('immersed');}},2000);});
 
 // entry
-soloModeBtn.addEventListener('click',function(){lobbyScreen.classList.remove('active');soloScreen.classList.add('active');soloStrokes=[];soloUndoStack=[];soloCamX=0;soloCamY=0;soloCamZoom=1;soloImmersed=false;soloToolbarCollapsed=false;rainbowHue=Math.random()*360;soloScreen.classList.remove('immersed-full');var t=dq('#solo-top-bar');if(t)t.classList.remove('immersed');var tb=dq('#solo-toolbar');if(tb){tb.classList.remove('immersed');tb.classList.remove('collapsed');}var eb=dq('#solo-exit-immerse');if(eb)eb.classList.add('hidden');var bt=dq('#solo-toggle-toolbar');if(bt)bt.textContent='▼';initSoloCanvas();updateUndoRedoBtns();updateZoomBadge();});
+soloModeBtn.addEventListener('click',function(){lobbyScreen.classList.remove('active');soloScreen.classList.add('active');soloStrokes=[];soloUndoStack=[];soloCamX=0;soloCamY=0;soloCamZoom=1;soloImmersed=false;soloToolbarCollapsed=false;rainbowHue=Math.random()*360;soloSessionStart=Date.now();soloReplayMode=false;soloReplayPaused=false;if(soloReplayTimer){cancelAnimationFrame(soloReplayTimer);soloReplayTimer=null;}var rb=dq('#solo-replay-bar');if(rb)rb.classList.add('hidden');soloScreen.classList.remove('immersed-full');var t=dq('#solo-top-bar');if(t)t.classList.remove('immersed');var tb=dq('#solo-toolbar');if(tb){tb.classList.remove('immersed');tb.classList.remove('collapsed');}var eb=dq('#solo-exit-immerse');if(eb)eb.classList.add('hidden');var bt=dq('#solo-toggle-toolbar');if(bt)bt.textContent='▼';initSoloCanvas();updateUndoRedoBtns();updateZoomBadge();});
 soloBackBtn.addEventListener('click',function(){soloScreen.classList.remove('active');lobbyScreen.classList.add('active');soloIsPanMode=false;soloPanBtn.classList.remove('active');});
 window.addEventListener('resize',function(){if(soloScreen.classList.contains('active'))initSoloCanvas();});
 window.addEventListener('orientationchange',function(){if(soloScreen.classList.contains('active'))setTimeout(initSoloCanvas,300);});
@@ -1133,4 +1189,4 @@ window.addEventListener('orientationchange',function(){if(soloScreen.classList.c
 // 主题切换
 (function(){var b=document.querySelector('#theme-toggle');if(b)b.addEventListener('click',function(){var h=document.documentElement;var t=h.getAttribute('data-theme')==='dark'?'light':'dark';h.setAttribute('data-theme',t);localStorage.setItem('solo-theme',t);});})();
 
-console.log('🎨 你画我猜 v3.5 - 前端就绪');
+console.log('🎨 你画我猜 v4.0 - 前端就绪');
