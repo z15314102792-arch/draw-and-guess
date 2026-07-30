@@ -36,7 +36,7 @@
   <div id="lobby-screen" class="screen active">
     <div class="lobby-container">
       <h1 class="logo">🎨 你画我猜</h1>
-      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v1.1</span></p>
+      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v2.0</span></p>
 
       <div class="form-group">
         <label>你的昵称</label>
@@ -44,6 +44,10 @@
       </div>
 
       <button id="create-room-btn" class="btn btn-primary btn-block">🏠 创建房间</button>
+
+      <div class="divider"><span>或</span></div>
+
+      <button id="solo-mode-btn" class="btn btn-solo btn-block">🎨 单人创作</button>
 
       <div class="divider"><span>或</span></div>
 
@@ -189,6 +193,68 @@
     <!-- Toast 提示 -->
     <div id="toast" class="toast hidden"></div>
 
+  </div>
+
+  <!-- ====== 单人创作模式 ====== -->
+  <div id="solo-screen" class="screen">
+    <div id="solo-top-bar">
+      <button id="solo-back-btn" class="icon-btn">←</button>
+      <span class="solo-title">🎨 单人创作</span>
+      <span class="solo-brush-info" id="solo-brush-info">钢笔 · 3px</span>
+    </div>
+    <div id="solo-canvas-wrap">
+      <canvas id="solo-canvas"></canvas>
+    </div>
+    <div id="solo-toolbar">
+      <!-- 画笔类型 -->
+      <div class="solo-row">
+        <span class="solo-label">画笔</span>
+        <div class="solo-brushes">
+          <button class="solo-brush-btn active" data-brush="pen" title="钢笔 · 平滑流畅">✒️</button>
+          <button class="solo-brush-btn" data-brush="marker" title="马克笔 · 半透明叠色">🖍️</button>
+          <button class="solo-brush-btn" data-brush="water" title="水彩 · 边缘扩散">🖌️</button>
+          <button class="solo-brush-btn" data-brush="spray" title="喷枪 · 粒子喷洒">🌫️</button>
+          <button class="solo-brush-btn" data-brush="calligraphy" title="书法 · 粗细变化">🖋️</button>
+          <button class="solo-brush-btn" data-brush="eraser" title="橡皮擦">🧹</button>
+        </div>
+      </div>
+      <!-- 粗细 -->
+      <div class="solo-row">
+        <span class="solo-label">粗细 <span id="solo-size-val">3</span>px</span>
+        <input type="range" id="solo-size-slider" class="solo-slider" min="1" max="50" value="3">
+      </div>
+      <!-- 透明度 -->
+      <div class="solo-row">
+        <span class="solo-label">透明度 <span id="solo-opacity-val">100</span>%</span>
+        <input type="range" id="solo-opacity-slider" class="solo-slider" min="5" max="100" value="100">
+      </div>
+      <!-- 颜色 -->
+      <div class="solo-row">
+        <span class="solo-label">颜色</span>
+        <div class="solo-colors">
+          <button class="solo-color-btn active" data-color="#000000" style="background:#000000"></button>
+          <button class="solo-color-btn" data-color="#333333" style="background:#333333"></button>
+          <button class="solo-color-btn" data-color="#666666" style="background:#666666"></button>
+          <button class="solo-color-btn" data-color="#E74C3C" style="background:#E74C3C"></button>
+          <button class="solo-color-btn" data-color="#E67E22" style="background:#E67E22"></button>
+          <button class="solo-color-btn" data-color="#F1C40F" style="background:#F1C40F"></button>
+          <button class="solo-color-btn" data-color="#2ECC71" style="background:#2ECC71"></button>
+          <button class="solo-color-btn" data-color="#1ABC9C" style="background:#1ABC9C"></button>
+          <button class="solo-color-btn" data-color="#3498DB" style="background:#3498DB"></button>
+          <button class="solo-color-btn" data-color="#9B59B6" style="background:#9B59B6"></button>
+          <button class="solo-color-btn" data-color="#FF6B9D" style="background:#FF6B9D"></button>
+          <button class="solo-color-btn" data-color="#8B4513" style="background:#8B4513"></button>
+          <input type="color" id="solo-custom-color" class="custom-color-input" value="#000000" title="自定义颜色">
+        </div>
+      </div>
+      <!-- 操作按钮 -->
+      <div class="solo-row solo-actions">
+        <button id="solo-undo-btn" class="btn btn-sm btn-secondary" disabled>↩ 撤销</button>
+        <button id="solo-redo-btn" class="btn btn-sm btn-secondary" disabled>↪ 重做</button>
+        <button id="solo-clear-btn" class="btn btn-sm btn-secondary">🗑 清空</button>
+        <button id="solo-save-btn" class="btn btn-sm btn-primary">💾 保存</button>
+      </div>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>

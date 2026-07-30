@@ -423,3 +423,71 @@ input[type="text"]:focus { border-color: var(--primary); background: #fff; }
   #game-screen { max-width: 500px; margin: 0 auto; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
   .slide-menu { width: 300px; }
 }
+
+/* ====== 单人创作模式 ====== */
+.btn-solo {
+  background: linear-gradient(135deg, #FF6B9D, #C44D8F);
+  color: #fff;
+  font-size: 1rem;
+  padding: 14px 20px;
+}
+
+#solo-screen { flex-direction: column; background: #1a1a2e; }
+#solo-screen.active { display: flex; }
+
+#solo-top-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; background: #16213e; color: #fff;
+  flex-shrink: 0;
+}
+.solo-title { font-weight: 700; font-size: 1rem; }
+.solo-brush-info { margin-left: auto; font-size: 0.8rem; color: #aab; }
+
+#solo-canvas-wrap {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  overflow: hidden; background: repeating-conic-gradient(#2a2a3e 0% 25%, #252538 0% 50%) 50% / 20px 20px;
+}
+#solo-canvas {
+  background: #fff;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+  touch-action: none; cursor: crosshair;
+}
+
+#solo-toolbar {
+  background: #16213e; color: #e0e0e0;
+  padding: 8px 12px; flex-shrink: 0;
+  max-height: 35vh; overflow-y: auto;
+}
+.solo-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 6px; flex-wrap: wrap;
+}
+.solo-label { font-size: 0.75rem; color: #8899aa; min-width: 55px; }
+
+.solo-brushes { display: flex; gap: 4px; }
+.solo-brush-btn {
+  width: 36px; height: 36px; border: 2px solid #334;
+  border-radius: 8px; background: #1a1a2e; font-size: 1.1rem;
+  cursor: pointer; transition: all 0.15s;
+}
+.solo-brush-btn:active { transform: scale(0.92); }
+.solo-brush-btn.active { border-color: #FF6B9D; background: #2a1a2e; box-shadow: 0 0 8px rgba(255,107,157,0.3); }
+
+.solo-slider {
+  flex: 1; -webkit-appearance: none; height: 6px;
+  border-radius: 3px; background: #334; outline: none;
+  accent-color: #FF6B9D;
+}
+
+.solo-colors { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.solo-color-btn {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 2px solid #334; cursor: pointer; transition: all 0.15s;
+}
+.solo-color-btn:active { transform: scale(0.9); }
+.solo-color-btn.active { border-color: #fff; box-shadow: 0 0 6px rgba(255,255,255,0.5); }
+
+.solo-actions { gap: 6px; margin-bottom: 0; }
+.solo-actions .btn { font-size: 0.8rem; padding: 8px 12px; }
+.solo-actions .btn:disabled { opacity: 0.3; }
+.solo-actions .btn-primary { background: #FF6B9D; }

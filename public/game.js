@@ -816,4 +816,410 @@ init();
 window.addEventListener('resize', resizeCanvas);
 window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 300));
 
+// ##########################################################
+// #                  单人创作模式 (Solo Mode)                #
+// ##########################################################
+
+// DOM 引用
+const soloScreen = $('#solo-screen');
+const soloModeBtn = $('#solo-mode-btn');
+const soloBackBtn = $('#solo-back-btn');
+const soloCanvas = $('#solo-canvas');
+const soloCtx = soloCanvas.getContext('2d');
+const soloBrushInfo = $('#solo-brush-info');
+const soloSizeSlider = $('#solo-size-slider');
+const soloSizeVal = $('#solo-size-val');
+const soloOpacitySlider = $('#solo-opacity-slider');
+const soloOpacityVal = $('#solo-opacity-val');
+const soloUndoBtn = $('#solo-undo-btn');
+const soloRedoBtn = $('#solo-redo-btn');
+const soloClearBtn = $('#solo-clear-btn');
+const soloSaveBtn = $('#solo-save-btn');
+const soloCustomColor = $('#solo-custom-color');
+
+// 状态
+let soloBrush = 'pen';
+let soloColor = '#000000';
+let soloSize = 3;
+let soloOpacity = 1;
+let soloDrawing = false;
+let soloLastPoint = null;
+let soloStrokes = [];        // [{ brush, color, size, opacity, points: [{x,y,speed}] }]
+let soloUndoStack = [];
+let soloPoints = [];         // 当前笔画点
+
+// ============ Solo 初始化 ============
+function initSoloCanvas() {
+  const wrap = $('#solo-canvas-wrap');
+  const maxW = wrap.clientWidth - 8;
+  const maxH = wrap.clientHeight - 8;
+  const w = Math.min(maxW, 800);
+  const h = Math.min(maxH, 600);
+  const dpr = window.devicePixelRatio || 1;
+  soloCanvas.style.width = w + 'px';
+  soloCanvas.style.height = h + 'px';
+  soloCanvas.width = w * dpr;
+  soloCanvas.height = h * dpr;
+  soloCtx.setTransform(1, 0, 0, 1, 0, 0);
+  soloCtx.scale(dpr, dpr);
+  soloCtx.fillStyle = '#FFFFFF';
+  soloCtx.fillRect(0, 0, w, h);
+}
+
+function redrawAllStrokes() {
+  const w = parseFloat(soloCanvas.style.width);
+  const h = parseFloat(soloCanvas.style.height);
+  soloCtx.clearRect(0, 0, w, h);
+  soloCtx.fillStyle = '#FFFFFF';
+  soloCtx.fillRect(0, 0, w, h);
+  for (const stroke of soloStrokes) {
+    renderStroke(stroke);
+  }
+}
+
+function renderStroke(stroke) {
+  const ctx = soloCtx;
+  const pts = stroke.points;
+  if (pts.length < 2) return;
+  ctx.save();
+  ctx.globalAlpha = stroke.opacity;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  if (stroke.brush === 'eraser') {
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.strokeStyle = 'rgba(0,0,0,1)';
+    ctx.lineWidth = stroke.size * 2;
+    for (let i = 1; i < pts.length; i++) {
+      ctx.beginPath();
+      ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
+      ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+
+  ctx.globalCompositeOperation = stroke.brush === 'marker' ? 'multiply' : 'source-over';
+  ctx.strokeStyle = stroke.color;
+
+  if (stroke.brush === 'spray') {
+    for (const p of pts) {
+      const particles = Math.floor(stroke.size * 2);
+      for (let j = 0; j < particles; j++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * stroke.size * 2;
+        const px = p.x + Math.cos(angle) * dist;
+        const py = p.y + Math.sin(angle) * dist;
+        ctx.fillStyle = stroke.color;
+        ctx.globalAlpha = stroke.opacity * Math.random() * 0.3;
+        ctx.beginPath();
+        ctx.arc(px, py, 0.5 + Math.random(), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+    return;
+  }
+
+  // 绘制贝塞尔曲线
+  ctx.lineWidth = stroke.size;
+  for (let i = 1; i < pts.length; i++) {
+    const p0 = pts[i - 1];
+    const p1 = pts[i];
+
+    if (stroke.brush === 'water') {
+      // 水彩：多层半透明圆
+      const layers = 3;
+      for (let l = 0; l < layers; l++) {
+        ctx.globalAlpha = stroke.opacity * 0.15;
+        ctx.lineWidth = stroke.size + (l * stroke.size * 0.8);
+        ctx.strokeStyle = stroke.color;
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.stroke();
+      }
+    } else if (stroke.brush === 'calligraphy') {
+      // 书法：根据移动方向旋转椭圆，速度越快越细
+      const dx = p1.x - p0.x;
+      const dy = p1.y - p0.y;
+      const speed = Math.sqrt(dx * dx + dy * dy);
+      const w = stroke.size * (1 + 1 / (1 + speed * 0.3));
+      const h = stroke.size * (1 / (1 + speed * 0.1));
+      const angle = Math.atan2(dy, dx);
+      ctx.save();
+      ctx.translate(p0.x, p0.y);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
+      ctx.fillStyle = stroke.color;
+      ctx.fill();
+      ctx.restore();
+    } else {
+      // 钢笔/马克笔：二次贝塞尔平滑
+      if (i >= 2) {
+        const pp = pts[i - 2];
+        const cpX = (pp.x + p0.x) / 2;
+        const cpY = (pp.y + p0.y) / 2;
+        const midX = (p0.x + p1.x) / 2;
+        const midY = (p0.y + p1.y) / 2;
+        ctx.beginPath();
+        ctx.moveTo(cpX, cpY);
+        ctx.quadraticCurveTo(p0.x, p0.y, midX, midY);
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.stroke();
+      }
+    }
+  }
+  ctx.restore();
+}
+
+// ============ Solo 事件处理 ============
+function getSoloPos(e) {
+  const rect = soloCanvas.getBoundingClientRect();
+  const cx = e.touches ? e.touches[0].clientX : e.clientX;
+  const cy = e.touches ? e.touches[0].clientY : e.clientY;
+  const scaleX = parseFloat(soloCanvas.style.width) / rect.width;
+  const scaleY = parseFloat(soloCanvas.style.height) / rect.height;
+  return {
+    x: (cx - rect.left) * scaleX,
+    y: (cy - rect.top) * scaleY,
+    time: Date.now(),
+  };
+}
+
+function soloStart(e) {
+  e.preventDefault();
+  soloDrawing = true;
+  const pt = getSoloPos(e);
+  soloLastPoint = pt;
+  soloPoints = [pt];
+  // 点一个点
+  soloCtx.fillStyle = soloColor;
+  soloCtx.globalAlpha = soloOpacity;
+  soloCtx.beginPath();
+  soloCtx.arc(pt.x, pt.y, soloSize / 2, 0, Math.PI * 2);
+  soloCtx.fill();
+}
+
+function soloMove(e) {
+  if (!soloDrawing) return;
+  e.preventDefault();
+  const pt = getSoloPos(e);
+  const dx = pt.x - soloLastPoint.x;
+  const dy = pt.y - soloLastPoint.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  // 最小采样距离
+  if (dist < 2) return;
+
+  pt.speed = dist / Math.max(1, pt.time - soloLastPoint.time);
+  soloPoints.push(pt);
+
+  // 实时渲染当前段
+  const ctx = soloCtx;
+  ctx.save();
+  ctx.globalAlpha = soloOpacity;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  if (soloBrush === 'eraser') {
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.lineWidth = soloSize * 2;
+    ctx.strokeStyle = 'rgba(0,0,0,1)';
+    ctx.beginPath();
+    ctx.moveTo(soloLastPoint.x, soloLastPoint.y);
+    ctx.lineTo(pt.x, pt.y);
+    ctx.stroke();
+  } else if (soloBrush === 'spray') {
+    const particles = Math.floor(soloSize * 2);
+    for (let j = 0; j < particles; j++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Math.random() * soloSize * 2;
+      ctx.fillStyle = soloColor;
+      ctx.globalAlpha = soloOpacity * Math.random() * 0.3;
+      ctx.beginPath();
+      ctx.arc(pt.x + Math.cos(angle) * dist, pt.y + Math.sin(angle) * dist, 0.5 + Math.random(), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (soloBrush === 'water') {
+    for (let l = 0; l < 3; l++) {
+      ctx.globalAlpha = soloOpacity * 0.12;
+      ctx.lineWidth = soloSize + (l * soloSize * 0.8);
+      ctx.strokeStyle = soloColor;
+      ctx.beginPath();
+      ctx.moveTo(soloLastPoint.x, soloLastPoint.y);
+      ctx.lineTo(pt.x, pt.y);
+      ctx.stroke();
+    }
+  } else if (soloBrush === 'calligraphy') {
+    const speed = dist / Math.max(1, pt.time - soloLastPoint.time);
+    const w = soloSize * (1 + 1 / (1 + speed * 0.3));
+    const h = soloSize * (1 / (1 + speed * 0.1));
+    const angle = Math.atan2(dy, dx);
+    ctx.save();
+    ctx.translate(soloLastPoint.x, soloLastPoint.y);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
+    ctx.fillStyle = soloColor;
+    ctx.fill();
+    ctx.restore();
+  } else {
+    // 钢笔/马克笔：贝塞尔平滑
+    ctx.lineWidth = soloSize;
+    ctx.strokeStyle = soloColor;
+    if (soloBrush === 'marker') ctx.globalCompositeOperation = 'multiply';
+    ctx.beginPath();
+    if (soloPoints.length >= 3) {
+      const pp = soloPoints[soloPoints.length - 3];
+      const cpX = (pp.x + soloLastPoint.x) / 2;
+      const cpY = (pp.y + soloLastPoint.y) / 2;
+      const midX = (soloLastPoint.x + pt.x) / 2;
+      const midY = (soloLastPoint.y + pt.y) / 2;
+      ctx.moveTo(cpX, cpY);
+      ctx.quadraticCurveTo(soloLastPoint.x, soloLastPoint.y, midX, midY);
+    } else {
+      ctx.moveTo(soloLastPoint.x, soloLastPoint.y);
+      ctx.lineTo(pt.x, pt.y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+  soloLastPoint = pt;
+}
+
+function soloEnd(e) {
+  if (!soloDrawing) return;
+  e.preventDefault();
+  soloDrawing = false;
+  soloLastPoint = null;
+
+  if (soloPoints.length > 1) {
+    // 保存笔画到历史
+    soloUndoStack = [];
+    soloStrokes.push({
+      brush: soloBrush,
+      color: soloColor,
+      size: soloSize,
+      opacity: soloOpacity,
+      points: [...soloPoints],
+    });
+    updateUndoRedoBtns();
+  }
+  soloPoints = [];
+}
+
+// ============ Solo UI 控制器 ============
+$$('.solo-brush-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    $$('.solo-brush-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    soloBrush = btn.dataset.brush;
+    updateSoloBrushInfo();
+  });
+});
+
+soloSizeSlider.addEventListener('input', () => {
+  soloSize = parseInt(soloSizeSlider.value);
+  soloSizeVal.textContent = soloSize;
+  updateSoloBrushInfo();
+});
+
+soloOpacitySlider.addEventListener('input', () => {
+  soloOpacity = parseInt(soloOpacitySlider.value) / 100;
+  soloOpacityVal.textContent = parseInt(soloOpacitySlider.value);
+});
+
+$$('.solo-color-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    $$('.solo-color-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    soloColor = btn.dataset.color;
+    soloCustomColor.value = soloColor;
+  });
+});
+
+soloCustomColor.addEventListener('input', () => {
+  soloColor = soloCustomColor.value;
+  $$('.solo-color-btn').forEach(b => b.classList.remove('active'));
+});
+
+soloUndoBtn.addEventListener('click', () => {
+  if (soloStrokes.length === 0) return;
+  soloUndoStack.push(soloStrokes.pop());
+  redrawAllStrokes();
+  updateUndoRedoBtns();
+});
+
+soloRedoBtn.addEventListener('click', () => {
+  if (soloUndoStack.length === 0) return;
+  soloStrokes.push(soloUndoStack.pop());
+  redrawAllStrokes();
+  updateUndoRedoBtns();
+});
+
+soloClearBtn.addEventListener('click', () => {
+  if (soloStrokes.length === 0) return;
+  if (confirm('确定清空画布吗？此操作不可恢复。')) {
+    soloStrokes = [];
+    soloUndoStack = [];
+    initSoloCanvas();
+    updateUndoRedoBtns();
+  }
+});
+
+soloSaveBtn.addEventListener('click', () => {
+  const link = document.createElement('a');
+  link.download = '我的画作_' + new Date().toISOString().slice(0, 10) + '.png';
+  link.href = soloCanvas.toDataURL('image/png');
+  link.click();
+  showToast('💾 画作已保存！');
+});
+
+function updateUndoRedoBtns() {
+  soloUndoBtn.disabled = soloStrokes.length === 0;
+  soloRedoBtn.disabled = soloUndoStack.length === 0;
+}
+
+function updateSoloBrushInfo() {
+  const names = { pen: '钢笔', marker: '马克笔', water: '水彩', spray: '喷枪', calligraphy: '书法', eraser: '橡皮' };
+  soloBrushInfo.textContent = (names[soloBrush] || '钢笔') + ' · ' + soloSize + 'px';
+}
+
+// Canvas 事件
+soloCanvas.addEventListener('touchstart', soloStart, { passive: false });
+soloCanvas.addEventListener('touchmove', soloMove, { passive: false });
+soloCanvas.addEventListener('touchend', soloEnd);
+soloCanvas.addEventListener('mousedown', soloStart);
+soloCanvas.addEventListener('mousemove', soloMove);
+soloCanvas.addEventListener('mouseup', soloEnd);
+soloCanvas.addEventListener('mouseleave', soloEnd);
+
+// 进入/退出单人模式
+soloModeBtn.addEventListener('click', () => {
+  lobbyScreen.classList.remove('active');
+  soloScreen.classList.add('active');
+  initSoloCanvas();
+  soloStrokes = [];
+  soloUndoStack = [];
+  updateUndoRedoBtns();
+  updateSoloBrushInfo();
+});
+
+soloBackBtn.addEventListener('click', () => {
+  soloScreen.classList.remove('active');
+  lobbyScreen.classList.add('active');
+});
+
+// resize/orientationchange 已在前面注册，此处通过合并处理
+const _origResize = window.onresize;
+window.addEventListener('resize', () => { if (soloScreen.classList.contains('active')) initSoloCanvas(); });
+window.addEventListener('orientationchange', () => { if (soloScreen.classList.contains('active')) setTimeout(initSoloCanvas, 300); });
+
 console.log('🎨 你画我猜 v2 - 前端就绪');
