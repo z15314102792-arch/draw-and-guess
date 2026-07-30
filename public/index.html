@@ -41,7 +41,7 @@
   <div id="lobby-screen" class="screen active">
     <div class="lobby-container">
       <h1 class="logo">🎨 你画我猜</h1>
-      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v4.0</span></p>
+      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v4.2</span></p>
       <button id="theme-toggle" class="theme-toggle" title="切换主题">🌓</button>
 
       <div class="form-group">
@@ -258,6 +258,16 @@
           <button class="solo-brush-btn" data-brush="charcoal" title="粗糙颗粒碳条质感，素描风格"><span class="brush-icon">🖍</span><span class="brush-label">炭笔</span><span class="brush-desc">颗粒素描</span></button>
           <button class="solo-brush-btn" data-brush="screen" title="增亮混合，越画越亮，适合高光"><span class="brush-icon">💡</span><span class="brush-label">增亮</span><span class="brush-desc">屏幕增亮</span></button>
           <button class="solo-brush-btn eraser-btn" data-brush="eraser" title="擦除画面内容，还原白色背景"><span class="brush-icon">⌫</span><span class="brush-label">橡皮</span><span class="brush-desc">擦除还原</span></button>
+        </div>
+      </div>
+      <!-- 辅助工具 -->
+      <div class="solo-row">
+        <div class="solo-tools" id="solo-tools">
+          <button class="solo-tool-btn" data-brush="shape-line" title="直线：按下拖动画直线"><span class="tool-icon">📏</span><span class="tool-label">直线</span></button>
+          <button class="solo-tool-btn" data-brush="shape-rect" title="矩形：对角拖动画矩形"><span class="tool-icon">⬜</span><span class="tool-label">矩形</span></button>
+          <button class="solo-tool-btn" data-brush="shape-circle" title="圆形：拖动画圆形"><span class="tool-icon">⭕</span><span class="tool-label">圆形</span></button>
+          <button class="solo-tool-btn" data-brush="fill" title="填充：点击封闭区域填色（不可撤销）"><span class="tool-icon">🪣</span><span class="tool-label">填充</span></button>
+          <button class="solo-tool-btn" data-brush="eyedropper" title="取色：点击画布吸取颜色"><span class="tool-icon">💉</span><span class="tool-label">取色</span></button>
         </div>
       </div>
       <!-- 粗细 -->
