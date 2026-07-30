@@ -765,7 +765,7 @@ const SERVER_URL = (LOCAL_IP !== 'localhost' && !LOCAL_IP.startsWith('10.') && !
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`
 ╔══════════════════════════════════════════╗
-║        🎨 你画我猜 游戏服务器             ║
+║        🎨 你画我猜 游戏服务器  v1.1       ║
 ║                                          ║
 ║   本机访问: http://localhost:${PORT}         ║
 ║   手机访问: http://${LOCAL_IP}:${PORT}     ║
