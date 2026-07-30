@@ -1023,6 +1023,7 @@ window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 300)
 // 单人创作 v3 — 浅色主题/沉浸全屏/12种创意画笔
 const soloScreen=$('#solo-screen'),soloModeBtn=$('#solo-mode-btn'),soloBackBtn=$('#solo-back-btn');
 const soloCanvas=$('#solo-canvas'),soloCtx=soloCanvas.getContext('2d');
+const soloOverlay=$('#solo-overlay'),soloOverlayCtx=soloOverlay?soloOverlay.getContext('2d'):null;
 const soloSizeSlider=$('#solo-size-slider'),soloSizeVal=$('#solo-size-val');
 const soloOpacitySlider=$('#solo-opacity-slider'),soloOpacityVal=$('#solo-opacity-val');
 const soloSmoothSlider=$('#solo-smooth-slider'),soloSmoothVal=$('#solo-smooth-val');
@@ -1041,7 +1042,7 @@ let soloPanning=false,soloLastPanX=0,soloLastPanY=0,soloIsPanMode=false;
 let brushTipCache=null,brushTipCacheKey='',rainbowHue=0;
 let soloSessionStart=0,soloReplayMode=false,soloReplayTimer=null,soloReplaySpeed=2,soloReplayProgress=0,soloReplayTotalTime=0;
 let soloReplayPaused=false;
-let soloShapeStart=null,soloShapeSnapshot=null;
+let soloShapeStart=null;
 function srand(seed){var x=Math.sin(seed*9301+49297)*233280;return x-Math.floor(x);}
 let soloRafPending=false,soloCachedRect=null;
 function scheduleRedraw(){if(soloRafPending)return;soloRafPending=true;requestAnimationFrame(function(){soloRafPending=false;doRedrawAllStrokes();});}
@@ -1054,40 +1055,57 @@ function doRedrawAllStrokes(){
   for(var i=0;i<soloStrokes.length;i++)renderStroke(soloStrokes[i]);
 }
 
-// --- 形状/填充/取色工具 v4.2 ---
-function drawShapePreview(from,to,brush){
-  var ctx=soloCtx;ctx.save();
-  ctx.setTransform(1,0,0,1,0,0);ctx.scale(window.devicePixelRatio||1,window.devicePixelRatio||1);
+// --- 形状/填充/取色工具 v6.3 (overlay消除闪烁) ---
+function drawShapeOnCtx(ctx,from,to,brush,isDash){
+  ctx.save();
+  ctx.setTransform(1,0,0,1,0,0);
+  var dpr=window.devicePixelRatio||1;
+  ctx.scale(dpr,dpr);
   ctx.translate(soloCamX,soloCamY);ctx.scale(soloCamZoom,soloCamZoom);
   ctx.globalAlpha=soloOpacity;ctx.strokeStyle=soloColor;ctx.lineWidth=soloSize;ctx.lineCap='round';ctx.lineJoin='round';
-  ctx.setLineDash([6,4]);
+  if(isDash)ctx.setLineDash([6,4]);
   if(brush==='shape-line'){ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(to.x,to.y);ctx.stroke();}
   else if(brush==='shape-rect'){ctx.strokeRect(from.x,from.y,to.x-from.x,to.y-from.y);}
   else if(brush==='shape-circle'){var rx=(to.x-from.x)/2,ry=(to.y-from.y)/2;ctx.beginPath();ctx.ellipse(from.x+rx,from.y+ry,Math.abs(rx),Math.abs(ry),0,0,Math.PI*2);ctx.stroke();}
   ctx.restore();
 }
-function drawFinalShape(sd,brush){
-  var ctx=soloCtx;ctx.save();
-  ctx.setTransform(1,0,0,1,0,0);ctx.scale(window.devicePixelRatio||1,window.devicePixelRatio||1);
-  ctx.translate(soloCamX,soloCamY);ctx.scale(soloCamZoom,soloCamZoom);
-  ctx.globalAlpha=soloOpacity;ctx.strokeStyle=soloColor;ctx.lineWidth=soloSize;ctx.lineCap='round';ctx.lineJoin='round';
-  if(brush==='shape-line'){ctx.beginPath();ctx.moveTo(sd.x1,sd.y1);ctx.lineTo(sd.x2,sd.y2);ctx.stroke();}
-  else if(brush==='shape-rect'){ctx.strokeRect(sd.x1,sd.y1,sd.x2-sd.x1,sd.y2-sd.y1);}
-  else if(brush==='shape-circle'){var rx=(sd.x2-sd.x1)/2,ry=(sd.y2-sd.y1)/2;ctx.beginPath();ctx.ellipse(sd.x1+rx,sd.y1+ry,Math.abs(rx),Math.abs(ry),0,0,Math.PI*2);ctx.stroke();}
-  ctx.restore();
+function clearOverlay(){
+  if(!soloOverlayCtx)return;
+  soloOverlayCtx.clearRect(0,0,soloOverlay.width,soloOverlay.height);
 }
+function syncOverlaySize(){
+  if(!soloOverlay)return;
+  soloOverlay.style.width=soloCanvas.style.width;
+  soloOverlay.style.height=soloCanvas.style.height;
+  soloOverlay.width=soloCanvas.width;
+  soloOverlay.height=soloCanvas.height;
+}
+
 function cmatch(r1,g1,b1,a1,r2,g2,b2,a2,t){return Math.abs(r1-r2)<=t&&Math.abs(g1-g2)<=t&&Math.abs(b1-b2)<=t&&Math.abs(a1-a2)<=t;}
 function soloFloodFill(wx,wy){
   var w=soloCanvas.width,h=soloCanvas.height,dpr=window.devicePixelRatio||1;
   var px=Math.round((wx*soloCamZoom+soloCamX)*dpr),py=Math.round((wy*soloCamZoom+soloCamY)*dpr);
-  if(px<0||px>=w||py<0||py>=h)return;
+  if(px<0||px>=w||py<0||py>=h){showToast('点在画布外');return;}
   var imageData=soloCtx.getImageData(0,0,w,h),data=imageData.data;
   var idx=(py*w+px)*4;var tr=data[idx],tg=data[idx+1],tb=data[idx+2],ta=data[idx+3];
+  // 拒绝填充纯白背景
+  if(tr>250&&tg>250&&tb>250){showToast('不能填充空白区域，请在有颜色的封闭区域内点击');return;}
   var fc={r:parseInt(soloColor.slice(1,3),16),g:parseInt(soloColor.slice(3,5),16),b:parseInt(soloColor.slice(5,7),16)};
-  if(cmatch(fc.r,fc.g,fc.b,255,tr,tg,tb,ta,30))return;
-  var stack=[[px,py]],visited=new Uint8Array(w*h),t=40,count=0;
-  while(stack.length>0&&count<w*h){var p=stack.pop(),x=p[0],y=p[1];if(x<0||x>=w||y<0||y>=h)continue;var vi=y*w+x;if(visited[vi])continue;var di=vi*4;if(!cmatch(data[di],data[di+1],data[di+2],data[di+3],tr,tg,tb,ta,t))continue;visited[vi]=1;data[di]=fc.r;data[di+1]=fc.g;data[di+2]=fc.b;data[di+3]=255;stack.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);count++;}
-  soloCtx.putImageData(imageData,0,0);showToast('已填充（缩放后消失）');
+  if(cmatch(fc.r,fc.g,fc.b,255,tr,tg,tb,ta,20)){showToast('填充色与点击处颜色相同');return;}
+  var stack=[[px,py]],visited=new Uint8Array(w*h),t=15,count=0,maxPixels=Math.floor(w*h/4);
+  while(stack.length>0&&count<maxPixels){
+    var p=stack.pop(),x=p[0],y=p[1];
+    if(x<0||x>=w||y<0||y>=h)continue;var vi=y*w+x;if(visited[vi])continue;
+    var di=vi*4;
+    if(!cmatch(data[di],data[di+1],data[di+2],data[di+3],tr,tg,tb,ta,t))continue;
+    visited[vi]=1;data[di]=fc.r;data[di+1]=fc.g;data[di+2]=fc.b;data[di+3]=255;
+    stack.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);count++;
+  }
+  if(count>=maxPixels){showToast('填充区域过大，已取消');return;}
+  soloCtx.putImageData(imageData,0,0);
+  // 强制清空 overlay 避免覆盖填充结果
+  clearOverlay();
+  showToast('已填充');
 }
 function soloPickColor(wx,wy){
   var w=soloCanvas.width,dpr=window.devicePixelRatio||1;
@@ -1125,6 +1143,7 @@ function initSoloCanvas(){
   soloCtx.clearRect(0,0,w,h);
   soloCtx.fillStyle='#FFFFFF';
   soloCtx.fillRect(0,0,w,h);
+  syncOverlaySize();clearOverlay();
   doRedrawAllStrokes();
 }
 function renderStroke(stroke){
@@ -1282,10 +1301,10 @@ function getTwoFingerMid(e){if(!soloCachedRect)soloCachedRect=soloCanvas.getBoun
 function soloStart(e){if(soloTwoFinger||soloPinching)return;soloCachedRect=null;if(soloIsPanMode){soloPanning=true;var p=getSoloPos(e);soloLastPanX=p.rawX;soloLastPanY=p.rawY;return;}
   if(soloBrush==='fill'){e.preventDefault();var fp=getSoloPos(e);soloFloodFill(fp.x,fp.y);return;}
   if(soloBrush==='eyedropper'){e.preventDefault();var ep=getSoloPos(e);soloPickColor(ep.x,ep.y);return;}
-  if(soloBrush==='shape-line'||soloBrush==='shape-rect'||soloBrush==='shape-circle'){e.preventDefault();soloShapeStart=getSoloPos(e);soloShapeSnapshot=soloCtx.getImageData(0,0,soloCanvas.width,soloCanvas.height);return;}
+  if(soloBrush==='shape-line'||soloBrush==='shape-rect'||soloBrush==='shape-circle'){e.preventDefault();clearOverlay();syncOverlaySize();soloShapeStart=getSoloPos(e);return;}
   e.preventDefault();soloDrawing=true;soloLastPos=getSoloPos(e);soloPoints=[soloLastPos];}
-function soloMove(e){if(soloPinching)return soloPinchMove(e);if(soloPanning){e.preventDefault();var p=getSoloPos(e);soloCamX+=p.rawX-soloLastPanX;soloCamY+=p.rawY-soloLastPanY;soloLastPanX=p.rawX;soloLastPanY=p.rawY;scheduleRedraw();return;}if(soloShapeStart){e.preventDefault();if(soloShapeSnapshot)soloCtx.putImageData(soloShapeSnapshot,0,0);var pt=getSoloPos(e);drawShapePreview(soloShapeStart,pt,soloBrush);return;}if(!soloDrawing)return;e.preventDefault();var pt=getSoloPos(e);if(Math.abs(pt.x-soloLastPos.x)<0.5&&Math.abs(pt.y-soloLastPos.y)<0.5)return;soloPoints.push(pt);soloCtx.setTransform(1,0,0,1,0,0);soloCtx.scale(window.devicePixelRatio||1,window.devicePixelRatio||1);soloCtx.translate(soloCamX,soloCamY);soloCtx.scale(soloCamZoom,soloCamZoom);drawLiveSegment(soloLastPos,pt);soloLastPos=pt;}
-function soloEnd(e){if(soloPinching){soloPinching=false;soloTwoFinger=e.touches?e.touches.length>=2:false;setTimeout(function(){soloZoomHint.classList.add('hidden');},1500);return;}if(soloPanning){soloPanning=false;return;}if(soloShapeStart){e.preventDefault();var pt=getSoloPos(e);if(soloShapeSnapshot)soloCtx.putImageData(soloShapeSnapshot,0,0);var sd={x1:soloShapeStart.x,y1:soloShapeStart.y,x2:pt.x,y2:pt.y};drawFinalShape(sd,soloBrush);soloUndoStack=[];soloStrokes.push({brush:soloBrush,color:soloColor,size:soloSize,opacity:soloOpacity,shapeData:sd,points:[soloShapeStart,pt],_startTime:Date.now()-soloSessionStart,_seed:Math.floor(Math.random()*100000)});updateUndoRedoBtns();soloShapeStart=null;soloShapeSnapshot=null;return;}if(!soloDrawing)return;e.preventDefault();soloDrawing=false;if(soloPoints.length>=1){var pts=soloPoints.length>1?soloPoints.slice():[soloPoints[0],Object.assign({},soloPoints[0])];soloUndoStack=[];soloStrokes.push({brush:soloBrush,color:soloColor,size:soloSize,opacity:soloOpacity,hardness:soloHardness,points:pts,_hueOffset:rainbowHue,_seed:Math.floor(Math.random()*100000),_startTime:Date.now()-soloSessionStart});updateUndoRedoBtns();rainbowHue=(rainbowHue+37)%360;}soloPoints=[];}
+function soloMove(e){if(soloPinching)return soloPinchMove(e);if(soloPanning){e.preventDefault();var p=getSoloPos(e);soloCamX+=p.rawX-soloLastPanX;soloCamY+=p.rawY-soloLastPanY;soloLastPanX=p.rawX;soloLastPanY=p.rawY;scheduleRedraw();return;}if(soloShapeStart){e.preventDefault();clearOverlay();var pt=getSoloPos(e);drawShapeOnCtx(soloOverlayCtx,soloShapeStart,pt,soloBrush,true);return;}if(!soloDrawing)return;e.preventDefault();var pt=getSoloPos(e);if(Math.abs(pt.x-soloLastPos.x)<0.5&&Math.abs(pt.y-soloLastPos.y)<0.5)return;soloPoints.push(pt);soloCtx.setTransform(1,0,0,1,0,0);soloCtx.scale(window.devicePixelRatio||1,window.devicePixelRatio||1);soloCtx.translate(soloCamX,soloCamY);soloCtx.scale(soloCamZoom,soloCamZoom);drawLiveSegment(soloLastPos,pt);soloLastPos=pt;}
+function soloEnd(e){if(soloPinching){soloPinching=false;soloTwoFinger=e.touches?e.touches.length>=2:false;setTimeout(function(){soloZoomHint.classList.add('hidden');},1500);return;}if(soloPanning){soloPanning=false;return;}if(soloShapeStart){e.preventDefault();clearOverlay();var pt=getSoloPos(e);var sd={x1:soloShapeStart.x,y1:soloShapeStart.y,x2:pt.x,y2:pt.y};drawShapeOnCtx(soloCtx,soloShapeStart,pt,soloBrush,false);soloUndoStack=[];soloStrokes.push({brush:soloBrush,color:soloColor,size:soloSize,opacity:soloOpacity,shapeData:sd,points:[soloShapeStart,pt],_startTime:Date.now()-soloSessionStart,_seed:Math.floor(Math.random()*100000)});updateUndoRedoBtns();soloShapeStart=null;return;}if(!soloDrawing)return;e.preventDefault();soloDrawing=false;if(soloPoints.length>=1){var pts=soloPoints.length>1?soloPoints.slice():[soloPoints[0],Object.assign({},soloPoints[0])];soloUndoStack=[];soloStrokes.push({brush:soloBrush,color:soloColor,size:soloSize,opacity:soloOpacity,hardness:soloHardness,points:pts,_hueOffset:rainbowHue,_seed:Math.floor(Math.random()*100000),_startTime:Date.now()-soloSessionStart});updateUndoRedoBtns();rainbowHue=(rainbowHue+37)%360;}soloPoints=[];}
 
 function drawLiveSegment(from,to){
   var ctx=soloCtx;ctx.save();ctx.lineCap='round';ctx.lineJoin='round';ctx.globalAlpha=soloOpacity;
@@ -1517,7 +1536,7 @@ function getDailyWord(){
 // 紧急清理所有活跃操作（鼠标离开/触摸取消时调用）
 function cancelSoloOperation(){
   soloDrawing=false;soloLastPos=null;soloPoints=[];
-  soloShapeStart=null;soloShapeSnapshot=null;
+  soloShapeStart=null;clearOverlay();
   soloPanning=false;soloLastPanX=0;soloLastPanY=0;
 }
 
@@ -1525,7 +1544,7 @@ function resetSoloState(){
   soloStrokes = []; soloUndoStack = [];
   soloCamX = 0; soloCamY = 0; soloCamZoom = 1;
   soloImmersed = false; soloToolbarCollapsed = false;
-  soloIsPanMode = false; soloShapeStart = null; soloShapeSnapshot = null;
+  soloIsPanMode = false; soloShapeStart = null; clearOverlay();
   rainbowHue = Math.random()*360;
   soloSessionStart = Date.now();
   soloReplayMode = false; soloReplayPaused = false;
