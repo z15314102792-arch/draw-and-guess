@@ -7,6 +7,7 @@ const $$ = (sel) => document.querySelectorAll(sel);
 // ============ DOM 元素 ============
 // Lobby
 const lobbyScreen = $('#lobby-screen');
+const gameScreen = $('#game-screen');
 const nicknameInput = $('#nickname-input');
 const createRoomBtn = $('#create-room-btn');
 const roomCodeInput = $('#room-code-input');
@@ -100,7 +101,16 @@ function connectSocket() {
   socket = io({ transports: ['websocket', 'polling'] });
 
   socket.on('connect', () => { console.log('[Socket] 已连接'); });
-  socket.on('disconnect', () => { showToast('⚠️ 连接断开'); });
+  socket.on('connect_error', (err) => {
+    console.error('[Socket] 连接失败:', err.message);
+    showToast('⚠️ 连接服务器失败，请检查网络');
+  });
+  socket.on('disconnect', (reason) => {
+    console.log('[Socket] 断开:', reason);
+    if (reason === 'transport close' || reason === 'ping timeout') {
+      showToast('⚠️ 连接断开，正在重连...');
+    }
+  });
 
   // --- 错误 ---
   socket.on('error', ({ message }) => { showToast('❌ ' + message); });
