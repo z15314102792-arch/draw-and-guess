@@ -5,11 +5,15 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "public": "node server.js & npx localtunnel --port 3000 --print-requests"
   },
   "dependencies": {
     "express": "^4.18.2",
     "socket.io": "^4.7.4",
     "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "localtunnel": "^2.0.2"
   }
 }

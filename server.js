@@ -753,9 +753,9 @@ function getLocalIP() {
 }
 const LOCAL_IP = getLocalIP();
 const PORT = process.env.PORT || 3000;
-const SERVER_URL = LOCAL_IP !== 'localhost'
+const SERVER_URL = (LOCAL_IP !== 'localhost' && !LOCAL_IP.startsWith('10.') && !LOCAL_IP.startsWith('172.'))
   ? `http://${LOCAL_IP}:${PORT}`
-  : `http://localhost:${PORT}`;
+  : `http://localhost:${PORT}`; // 云端部署时走 window.location.origin，本地走 localhost
 
 // ============ 启动服务器 ============
 server.listen(PORT, '0.0.0.0', () => {

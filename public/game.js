@@ -100,7 +100,9 @@ function connectSocket() {
     myPlayerId = socket.id;
     isHost = true;
     gameStatus = 'waiting';
-    if (sUrl) serverUrl = sUrl;
+    // 云端部署时 serverUrl 是内网 IP，用当前页面地址替代
+    if (sUrl && !sUrl.includes('localhost') && !sUrl.match(/\/\/10\.|172\./)) serverUrl = sUrl;
+    else serverUrl = window.location.origin;
     updatePlayerList(players);
     switchToGameScreen();
     updateWaitingPlayerCount(players);
