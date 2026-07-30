@@ -249,24 +249,6 @@
       <canvas id="solo-canvas"></canvas>
       <div id="solo-zoom-hint" class="solo-zoom-hint hidden">双指缩放 / 双指拖动</div>
     </div>
-    <!-- 回放控制条 -->
-    <div id="solo-replay-bar" class="solo-replay-bar hidden">
-      <div class="replay-progress-track" id="solo-replay-track">
-        <div class="replay-progress-fill" id="solo-replay-fill"></div>
-      </div>
-      <div class="replay-controls">
-        <button id="solo-replay-pause" class="replay-btn">⏸</button>
-        <span class="replay-time" id="solo-replay-time">0.0s</span>
-        <div class="replay-speeds">
-          <button class="replay-speed-btn" data-sp="1">1x</button>
-          <button class="replay-speed-btn active" data-sp="2">2x</button>
-          <button class="replay-speed-btn" data-sp="4">4x</button>
-          <button class="replay-speed-btn" data-sp="8">8x</button>
-        </div>
-        <button id="solo-replay-export" class="replay-btn" title="导出视频">🎬</button>
-        <button id="solo-replay-stop" class="replay-btn">✕</button>
-      </div>
-    </div>
     <button id="solo-toggle-toolbar" class="solo-toggle-toolbar" title="折叠工具栏">▼</button>
     <div id="solo-toolbar">
       <!-- 画笔类型 -->
@@ -333,7 +315,6 @@
         <button id="solo-undo-btn" class="btn btn-sm btn-secondary" disabled>↩ 撤销</button>
         <button id="solo-redo-btn" class="btn btn-sm btn-secondary" disabled>↪ 重做</button>
         <button id="solo-clear-btn" class="btn btn-sm btn-secondary">🗑 清空</button>
-        <button id="solo-replay-btn" class="btn btn-sm btn-accent" disabled>▶ 回放</button>
         <button id="solo-save-btn" class="btn btn-sm btn-primary">💾 保存</button>
       </div>
       <!-- 每日挑战 -->

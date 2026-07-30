@@ -1039,8 +1039,6 @@ let soloCamX=0,soloCamY=0,soloCamZoom=1,soloTwoFinger=false;
 let soloPinching=false,soloPinchStartDist=0,soloPinchStartZoom=1,soloPinchMidX=0,soloPinchMidY=0;
 let soloPanning=false,soloLastPanX=0,soloLastPanY=0,soloIsPanMode=false;
 let brushTipCache=null,brushTipCacheKey='',rainbowHue=0;
-let soloSessionStart=0,soloReplayMode=false,soloReplayTimer=null,soloReplaySpeed=2,soloReplayProgress=0,soloReplayTotalTime=0;
-let soloReplayPaused=false;
 function srand(seed){var x=Math.sin(seed*9301+49297)*233280;return x-Math.floor(x);}
 let soloRafPending=false,soloCachedRect=null;
 function scheduleRedraw(){if(soloRafPending)return;soloRafPending=true;requestAnimationFrame(function(){soloRafPending=false;doRedrawAllStrokes();});}
@@ -1137,7 +1135,7 @@ function renderStroke(stroke){
   var tip=(stroke.brush==='pen'||stroke.brush==='marker'||stroke.brush==='glow')?getBrushTip(stroke.color,stroke.size,hardness,stroke.brush):null;
 
   if(stroke.brush==='spray'){
-    var sd=stroke._seed||1;for(var i=0;i<pts.length;i++){var p=pts[i],n=Math.floor(stroke.size*2);for(var j=0;j<n;j++){var a=srand(sd+i*100+j)*Math.PI*2,d=srand(sd+i*100+j+50)*stroke.size*2;ctx.globalAlpha=stroke.opacity*srand(sd+i*100+j+100)*0.25;ctx.fillStyle=stroke.color;ctx.beginPath();ctx.arc(p.x+Math.cos(a)*d,p.y+Math.sin(a)*d,0.5+srand(sd+i*100+j+200),0,Math.PI*2);ctx.fill();}}ctx.restore();return;}
+    var sd=stroke._seed||1;for(var i=0;i<pts.length;i++){var p=pts[i],n=Math.floor(stroke.size*5);for(var j=0;j<n;j++){var a=srand(sd+i*100+j)*Math.PI*2,d=srand(sd+i*100+j+50)*stroke.size*2;ctx.globalAlpha=stroke.opacity*(0.15+srand(sd+i*100+j+100)*0.4);ctx.fillStyle=stroke.color;ctx.beginPath();ctx.arc(p.x+Math.cos(a)*d,p.y+Math.sin(a)*d,1+srand(sd+i*100+j+200)*stroke.size*0.3,0,Math.PI*2);ctx.fill();}}ctx.restore();return;}
   if(stroke.brush==='water'){for(var l=0;l<3;l++){ctx.globalAlpha=stroke.opacity*0.12;ctx.lineWidth=stroke.size+l*stroke.size*0.8;ctx.strokeStyle=stroke.color;for(var i=1;i<pts.length;i++){ctx.beginPath();ctx.moveTo(pts[i-1].x,pts[i-1].y);ctx.lineTo(pts[i].x,pts[i].y);ctx.stroke();}}ctx.restore();return;}
   if(stroke.brush==='pencil'){ctx.lineWidth=stroke.size*0.7;ctx.strokeStyle=stroke.color;ctx.globalAlpha=stroke.opacity*0.85;var sd=stroke._seed||1;for(var i=1;i<pts.length;i++){var wb=stroke.size*0.15;ctx.beginPath();ctx.moveTo(pts[i-1].x+(srand(sd+i)-0.5)*wb,pts[i-1].y+(srand(sd+i+300)-0.5)*wb);ctx.lineTo(pts[i].x+(srand(sd+i+600)-0.5)*wb,pts[i].y+(srand(sd+i+900)-0.5)*wb);ctx.stroke();}ctx.restore();return;}
   if(stroke.brush==='crayon'){ctx.lineWidth=stroke.size*1.2;ctx.strokeStyle=stroke.color;ctx.globalAlpha=stroke.opacity*0.7;var sd=stroke._seed||1;for(var p=0;p<2;p++)for(var i=1;i<pts.length;i++){var wb=stroke.size*0.3;ctx.beginPath();ctx.moveTo(pts[i-1].x+(srand(sd+i+p*1000)-0.5)*wb,pts[i-1].y+(srand(sd+i+p*1000+300)-0.5)*wb);ctx.lineTo(pts[i].x+(srand(sd+i+p*1000+600)-0.5)*wb,pts[i].y+(srand(sd+i+p*1000+900)-0.5)*wb);ctx.stroke();}ctx.restore();return;}
@@ -1217,7 +1215,7 @@ function getTwoFingerMid(e){if(!soloCachedRect)soloCachedRect=soloCanvas.getBoun
 function soloStart(e){if(soloTwoFinger||soloPinching)return;soloCachedRect=null;if(soloIsPanMode){soloPanning=true;var p=getSoloPos(e);soloLastPanX=p.rawX;soloLastPanY=p.rawY;return;}
   e.preventDefault();soloDrawing=true;soloLastPos=getSoloPos(e);soloPoints=[soloLastPos];}
 function soloMove(e){if(soloPinching)return soloPinchMove(e);if(soloPanning){e.preventDefault();var p=getSoloPos(e);soloCamX+=p.rawX-soloLastPanX;soloCamY+=p.rawY-soloLastPanY;soloLastPanX=p.rawX;soloLastPanY=p.rawY;scheduleRedraw();return;}if(!soloDrawing)return;e.preventDefault();var pt=getSoloPos(e);if(Math.abs(pt.x-soloLastPos.x)<0.5&&Math.abs(pt.y-soloLastPos.y)<0.5)return;soloPoints.push(pt);soloCtx.setTransform(1,0,0,1,0,0);soloCtx.scale(window.devicePixelRatio||1,window.devicePixelRatio||1);soloCtx.translate(soloCamX,soloCamY);soloCtx.scale(soloCamZoom,soloCamZoom);drawLiveSegment(soloLastPos,pt);soloLastPos=pt;}
-function soloEnd(e){if(soloPinching){soloPinching=false;soloTwoFinger=e.touches?e.touches.length>=2:false;setTimeout(function(){soloZoomHint.classList.add('hidden');},1500);return;}if(soloPanning){soloPanning=false;return;}if(!soloDrawing)return;e.preventDefault();soloDrawing=false;if(soloPoints.length>=1){var pts=soloPoints.length>1?soloPoints.slice():[soloPoints[0],Object.assign({},soloPoints[0])];soloUndoStack=[];soloStrokes.push({brush:soloBrush,color:soloColor,size:soloSize,opacity:soloOpacity,hardness:soloHardness,points:pts,_hueOffset:rainbowHue,_seed:Math.floor(Math.random()*100000),_startTime:Date.now()-soloSessionStart});updateUndoRedoBtns();rainbowHue=(rainbowHue+37)%360;}soloPoints=[];}
+function soloEnd(e){if(soloPinching){soloPinching=false;soloTwoFinger=e.touches?e.touches.length>=2:false;setTimeout(function(){soloZoomHint.classList.add('hidden');},1500);return;}if(soloPanning){soloPanning=false;return;}if(!soloDrawing)return;e.preventDefault();soloDrawing=false;if(soloPoints.length>=1){var pts=soloPoints.length>1?soloPoints.slice():[soloPoints[0],Object.assign({},soloPoints[0])];soloUndoStack=[];soloStrokes.push({brush:soloBrush,color:soloColor,size:soloSize,opacity:soloOpacity,hardness:soloHardness,points:pts,_hueOffset:rainbowHue,_seed:Math.floor(Math.random()*100000)});updateUndoRedoBtns();rainbowHue=(rainbowHue+37)%360;}soloPoints=[];}
 
 function drawLiveSegment(from,to){
   var ctx=soloCtx;ctx.save();ctx.lineCap='round';ctx.lineJoin='round';ctx.globalAlpha=soloOpacity;
@@ -1228,7 +1226,7 @@ function drawLiveSegment(from,to){
   if(soloBrush==='pixel'){var px=Math.round(to.x/soloSize)*soloSize,py=Math.round(to.y/soloSize)*soloSize;ctx.fillStyle=soloColor;ctx.globalAlpha=soloOpacity;ctx.fillRect(px-soloSize/2,py-soloSize/2,soloSize,soloSize);var fpx=Math.round(from.x/soloSize)*soloSize,fpy=Math.round(from.y/soloSize)*soloSize;ctx.fillRect(fpx-soloSize/2,fpy-soloSize/2,soloSize,soloSize);ctx.restore();return;}
   if(soloBrush==='glow'){ctx.shadowBlur=soloSize*2;ctx.shadowColor=soloColor;}
   ctx.globalCompositeOperation=(soloBrush==='marker'||soloBrush==='crayon')?'multiply':'source-over';
-  if(soloBrush==='spray'){var n=Math.floor(soloSize*2);for(var j=0;j<n;j++){var a=Math.random()*Math.PI*2,d=Math.random()*soloSize*2;ctx.globalAlpha=soloOpacity*Math.random()*0.25;ctx.fillStyle=soloColor;ctx.beginPath();ctx.arc(to.x+Math.cos(a)*d,to.y+Math.sin(a)*d,0.5+Math.random(),0,Math.PI*2);ctx.fill();}ctx.restore();return;}
+  if(soloBrush==='spray'){var n=Math.floor(soloSize*5);for(var j=0;j<n;j++){var a=Math.random()*Math.PI*2,d=Math.random()*soloSize*2;ctx.globalAlpha=soloOpacity*(0.15+Math.random()*0.4);ctx.fillStyle=soloColor;ctx.beginPath();ctx.arc(to.x+Math.cos(a)*d,to.y+Math.sin(a)*d,1+Math.random()*soloSize*0.3,0,Math.PI*2);ctx.fill();}ctx.restore();return;}
   if(soloBrush==='water'||soloBrush==='pencil'||soloBrush==='crayon'||soloBrush==='calligraphy'){ctx.lineWidth=soloSize;ctx.strokeStyle=soloColor;ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(to.x,to.y);ctx.stroke();ctx.restore();return;}
   // --- 新画笔 v3.5 实时预览 ---
   if(soloBrush==='mirror'){
@@ -1325,93 +1323,7 @@ soloUndoBtn.addEventListener('click',function(){if(!soloStrokes.length)return;so
 soloRedoBtn.addEventListener('click',function(){if(!soloUndoStack.length)return;soloStrokes.push(soloUndoStack.pop());doRedrawAllStrokes();updateUndoRedoBtns();});
 soloClearBtn.addEventListener('click',function(){if(!soloStrokes.length)return;if(confirm('确定清空画布吗？')){soloStrokes=[];soloUndoStack=[];doRedrawAllStrokes();updateUndoRedoBtns();}});
 soloSaveBtn.addEventListener('click',function(){var a=document.createElement('a');a.download='画作_'+new Date().toISOString().slice(0,10)+'.png';a.href=soloCanvas.toDataURL('image/png');a.click();showToast('已保存');});
-function updateUndoRedoBtns(){soloUndoBtn.disabled=!soloStrokes.length;soloRedoBtn.disabled=!soloUndoStack.length;var rb=dq('#solo-replay-btn');if(rb)rb.disabled=!soloStrokes.length;}
-
-  // --- 回放功能 v4.0 ---
-  function startSoloReplay(){
-    if(!soloStrokes.length)return;
-    soloReplayMode=true;soloReplayPaused=false;soloReplayProgress=0;
-    soloReplayTotalTime=soloStrokes[soloStrokes.length-1]._startTime+800;
-    var rb=dq('#solo-replay-bar');if(rb)rb.classList.remove('hidden');
-    soloCanvas.style.cursor='default';
-    doReplayRedraw();
-    soloReplayTimer=requestAnimationFrame(replayFrame);
-  }
-  function stopSoloReplay(){
-    soloReplayMode=false;soloReplayPaused=false;
-    if(soloReplayTimer){cancelAnimationFrame(soloReplayTimer);soloReplayTimer=null;}
-    var rb=dq('#solo-replay-bar');if(rb)rb.classList.add('hidden');
-    soloCanvas.style.cursor=soloIsPanMode?'grab':'crosshair';
-    doRedrawAllStrokes();
-  }
-  function replayFrame(ts){
-    if(!soloReplayMode)return;
-    if(!soloReplayPaused){
-      soloReplayProgress+=16.67*soloReplaySpeed;
-      if(soloReplayProgress>=soloReplayTotalTime){soloReplayProgress=soloReplayTotalTime;doReplayRedraw();stopSoloReplay();return;}
-      doReplayRedraw();
-    }
-    soloReplayTimer=requestAnimationFrame(replayFrame);
-  }
-  function doReplayRedraw(){
-    var w=parseFloat(soloCanvas.style.width),h=parseFloat(soloCanvas.style.height);
-    var dpr=window.devicePixelRatio||1;
-    soloCtx.setTransform(dpr,0,0,dpr,0,0);
-    soloCtx.clearRect(0,0,w,h);soloCtx.fillStyle='#FFFFFF';soloCtx.fillRect(0,0,w,h);
-    soloCtx.translate(soloCamX,soloCamY);soloCtx.scale(soloCamZoom,soloCamZoom);
-    for(var i=0;i<soloStrokes.length;i++){
-      var s=soloStrokes[i];
-      if(s._startTime>soloReplayProgress)break;
-      renderStroke(s);
-    }
-    updateReplayProgressUI();
-  }
-  function toggleReplayPause(){soloReplayPaused=!soloReplayPaused;var pb=dq('#solo-replay-pause');if(pb)pb.textContent=soloReplayPaused?'▶':'⏸';}
-  function changeReplaySpeed(sp){soloReplaySpeed=sp;var bb=dq('#solo-replay-bar');if(bb)bb.querySelectorAll('.replay-speed-btn').forEach(function(b){b.classList.toggle('active',+b.dataset.sp===sp);});}
-  function updateReplayProgressUI(){
-    var pct=soloReplayTotalTime?Math.round(soloReplayProgress/soloReplayTotalTime*100):0;
-    var fill=dq('#solo-replay-fill');if(fill)fill.style.width=pct+'%';
-    var time=dq('#solo-replay-time');if(time)time.textContent=(soloReplayProgress/1000).toFixed(1)+'s';
-  }
-  // 视频导出
-  var soloRecorder=null,soloRecordChunks=[];
-  function exportReplayVideo(){
-    if(!soloStrokes.length)return;
-    if(!soloCanvas.captureStream){showToast('浏览器不支持视频导出');return;}
-    // 停止当前回放
-    if(soloReplayMode)stopSoloReplay();
-    // 开始录制
-    var stream=soloCanvas.captureStream(30);
-    soloRecorder=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9'});
-    soloRecordChunks=[];
-    soloRecorder.ondataavailable=function(e){if(e.data.size>0)soloRecordChunks.push(e.data);};
-    soloRecorder.onstop=function(){
-      var blob=new Blob(soloRecordChunks,{type:'video/webm'});
-      var url=URL.createObjectURL(blob);
-      var a=document.createElement('a');a.href=url;a.download='画作回放_'+new Date().toISOString().slice(0,10)+'.webm';a.click();
-      URL.revokeObjectURL(url);
-      showToast('✅ 视频已导出');
-    };
-    soloRecorder.start();
-    // 以1x速度回放
-    var origSpeed=soloReplaySpeed;soloReplaySpeed=1;
-    changeReplaySpeed(1);
-    // 回放结束后停止录制
-    var checkDone=setInterval(function(){
-      if(!soloReplayMode){soloRecorder.stop();clearInterval(checkDone);soloReplaySpeed=origSpeed;changeReplaySpeed(origSpeed);}
-    },200);
-    startSoloReplay();
-    showToast('🎬 正在录制回放...');
-  }
-
-  // 回放按钮事件
-  (function(){
-    var btn=dq('#solo-replay-btn');if(btn)btn.addEventListener('click',function(){if(soloReplayMode){stopSoloReplay();return;}startSoloReplay();});
-    var pause=dq('#solo-replay-pause');if(pause)pause.addEventListener('click',toggleReplayPause);
-    var stop=dq('#solo-replay-stop');if(stop)stop.addEventListener('click',stopSoloReplay);
-    var exp=dq('#solo-replay-export');if(exp)exp.addEventListener('click',exportReplayVideo);
-    var bar=dq('#solo-replay-bar');if(bar)bar.querySelectorAll('.replay-speed-btn').forEach(function(b){b.addEventListener('click',function(){changeReplaySpeed(+b.dataset.sp);});});
-  })();
+function updateUndoRedoBtns(){soloUndoBtn.disabled=!soloStrokes.length;soloRedoBtn.disabled=!soloUndoStack.length;}
 
 // collapse
 (function(){var b=dq('#solo-toggle-toolbar');if(b)b.addEventListener('click',function(){soloToolbarCollapsed=!soloToolbarCollapsed;var tb=dq('#solo-toolbar');if(tb)tb.classList.toggle('collapsed',soloToolbarCollapsed);b.textContent=soloToolbarCollapsed?'▲':'▼';});})();
@@ -1457,10 +1369,6 @@ function resetSoloState(){
   soloImmersed = false; soloToolbarCollapsed = false;
   soloIsPanMode = false;
   rainbowHue = Math.random()*360;
-  soloSessionStart = Date.now();
-  soloReplayMode = false; soloReplayPaused = false;
-  if(soloReplayTimer){ cancelAnimationFrame(soloReplayTimer); soloReplayTimer = null; }
-  var rb = dq('#solo-replay-bar'); if(rb) rb.classList.add('hidden');
   soloScreen.classList.remove('immersed-full');
   var t = dq('#solo-top-bar'); if(t) t.classList.remove('immersed');
   var tb = dq('#solo-toolbar'); if(tb){ tb.classList.remove('immersed'); tb.classList.remove('collapsed'); }
@@ -1552,7 +1460,6 @@ var achievements = {
   'brush-master': { name: '画笔大师', desc: '使用过10种画笔', icon: '🖌' },
   'daily-submit': { name: '日拱一卒', desc: '完成一次每日挑战', icon: '📅' },
   'save-work': { name: '收藏家', desc: '保存一幅画作', icon: '💾' },
-  'replay-watch': { name: '自我欣赏', desc: '观看一次回放', icon: '▶' },
 };
 
 function getAchievements(){
@@ -1624,14 +1531,6 @@ function updateAchievementBadge(){
   if(soloSaveBtn){
     soloSaveBtn.addEventListener('click', function(){
       trackAchievement('save-work');
-    });
-  }
-  // 回放追踪
-  var origReplay = dq('#solo-replay-btn') ? dq('#solo-replay-btn').onclick : null;
-  if(dq('#solo-replay-btn')){
-    var replayBtn = dq('#solo-replay-btn');
-    replayBtn.addEventListener('click', function(){
-      if(!soloReplayMode && soloStrokes.length) trackAchievement('replay-watch');
     });
   }
   updateAchievementBadge();

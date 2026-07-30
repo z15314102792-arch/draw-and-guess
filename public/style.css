@@ -221,16 +221,6 @@ input[type="text"]:focus{border-color:var(--primary)}
 .solo-actions .btn-accent{background:#FF9800;color:#fff;border:none}
 .solo-actions .btn-accent:disabled{opacity:0.3}
 /* 回放控制条 */
-.solo-replay-bar{position:relative;margin:0 10px;padding:8px 12px;background:var(--solo-bar);border:1px solid var(--solo-border);border-radius:10px;display:flex;flex-direction:column;gap:6px}
-.solo-replay-bar.hidden{display:none}
-.replay-progress-track{width:100%;height:6px;background:var(--solo-border);border-radius:3px;overflow:hidden;cursor:pointer}
-.replay-progress-fill{height:100%;background:linear-gradient(90deg,#FF6B9D,#FF9800);border-radius:3px;transition:width 0.1s linear;width:0%}
-.replay-controls{display:flex;align-items:center;gap:8px}
-.replay-btn{width:32px;height:32px;border:1px solid var(--solo-border);border-radius:6px;background:var(--solo-bg);cursor:pointer;font-size:0.9rem;color:var(--solo-text);display:flex;align-items:center;justify-content:center}
-.replay-time{font-size:0.75rem;color:var(--solo-muted);min-width:40px;text-align:center}
-.replay-speeds{display:flex;gap:3px;margin-left:auto}
-.replay-speed-btn{padding:4px 8px;border:1px solid var(--solo-border);border-radius:4px;background:var(--solo-bg);cursor:pointer;font-size:0.7rem;color:var(--solo-muted);transition:all 0.15s}
-.replay-speed-btn.active{border-color:#FF6B9D;color:#FF6B9D;background:rgba(255,107,157,0.1)}
 .solo-bar-btn{width:34px;height:34px;border:1.5px solid var(--solo-border);border-radius:8px;background:var(--solo-bg);font-size:1rem;cursor:pointer;transition:all 0.15s;color:var(--solo-text);display:flex;align-items:center;justify-content:center}
 .solo-bar-btn:active{background:var(--solo-border)}
 .solo-bar-btn.active{border-color:#FF6B9D;box-shadow:0 0 6px rgba(255,107,157,0.3)}
