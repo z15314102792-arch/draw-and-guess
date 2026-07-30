@@ -247,6 +247,7 @@
     <button id="solo-exit-immerse" class="solo-exit-immerse hidden" title="退出沉浸模式">✕</button>
     <div id="solo-canvas-wrap">
       <canvas id="solo-canvas"></canvas>
+      <canvas id="solo-overlay"></canvas>
       <div id="solo-zoom-hint" class="solo-zoom-hint hidden">双指缩放 / 双指拖动</div>
     </div>
     <button id="solo-toggle-toolbar" class="solo-toggle-toolbar" title="折叠工具栏">▼</button>
@@ -275,6 +276,15 @@
           <button class="solo-brush-btn" data-brush="screen" title="增亮混合，越画越亮，适合高光"><span class="brush-icon">💡</span><span class="brush-label">增亮</span><span class="brush-desc">屏幕增亮</span></button>
           <button class="solo-brush-btn eraser-btn" data-brush="eraser" title="擦除画面内容，还原白色背景"><span class="brush-icon">⌫</span><span class="brush-label">橡皮</span><span class="brush-desc">擦除还原</span></button>
         </div>
+      </div>
+      <!-- 辅助工具行 -->
+      <div class="solo-row solo-tools-row">
+        <button class="solo-tool-btn" data-tool="line" title="直线">📏</button>
+        <button class="solo-tool-btn" data-tool="rect" title="矩形">⬜</button>
+        <button class="solo-tool-btn" data-tool="circle" title="圆形">⭕</button>
+        <span class="tool-sep">|</span>
+        <button class="solo-tool-btn" data-tool="fill" title="填充">🪣</button>
+        <button class="solo-tool-btn" data-tool="pick" title="取色">💉</button>
       </div>
       <!-- 粗细 -->
       <div class="solo-row">
