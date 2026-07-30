@@ -98,7 +98,12 @@ let offscreenCtx = null;
 
 // ============ Socket 连接 ============
 function connectSocket() {
-  socket = io();
+  // 微信浏览器用纯 HTTP 轮询（WebSocket 在微信中受限）
+  if (isWechatBrowser()) {
+    socket = io({ transports: ['polling'] });
+  } else {
+    socket = io();
+  }
 
   socket.on('connect', () => { console.log('[Socket] 已连接'); });
   socket.on('connect_error', (err) => {
@@ -756,18 +761,9 @@ updatePlayerList = function(players) {
 function isWechatBrowser() { return /micromessenger/i.test(navigator.userAgent); }
 
 if (isWechatBrowser()) {
-  wechatTip.classList.remove('hidden');
-  lobbyScreen.classList.add('hidden');
-  if (wechatUrlEl) wechatUrlEl.textContent = window.location.href;
-  if (wechatCopyBtn) {
-    wechatCopyBtn.addEventListener('click', () => {
-      const url = window.location.href;
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url).then(() => { wechatCopyBtn.textContent = '✅ 已复制！去浏览器粘贴打开'; })
-          .catch(() => { wechatCopyBtn.textContent = '请长按上方链接手动复制'; });
-      } else { wechatCopyBtn.textContent = '请长按上方链接手动复制'; }
-    });
-  }
+  // 微信内使用 HTTP 轮询模式，不再强制跳转浏览器
+  // 但首次加载可能较慢，显示提示
+  console.log('[微信] 使用轮询模式');
 }
 
 // ============ URL 直达 ============
@@ -775,17 +771,19 @@ if (isWechatBrowser()) {
   const roomFromUrl = new URLSearchParams(window.location.search).get('room');
   if (roomFromUrl) {
     roomCodeInput.value = roomFromUrl.toUpperCase();
-    if (!isWechatBrowser()) {
-      const names = ['小明', '小红', '小刚', '阿花', '大壮', '豆豆', '乐乐', '小雪', '小龙', '菲菲'];
-      nicknameInput.value = names[Math.floor(Math.random() * names.length)];
-      setTimeout(() => {
-        const code = roomCodeInput.value.trim().toUpperCase();
-        if (code && !socket) {
-          connectSocket();
+    const names = ['小明', '小红', '小刚', '阿花', '大壮', '豆豆', '乐乐', '小雪', '小龙', '菲菲'];
+    nicknameInput.value = names[Math.floor(Math.random() * names.length)];
+    setTimeout(() => {
+      const code = roomCodeInput.value.trim().toUpperCase();
+      if (code && !socket) {
+        connectSocket();
+        if (socket.connected) {
+          socket.emit('join-room', { roomId: code, playerName: nicknameInput.value.trim() });
+        } else {
           socket.once('connect', () => { socket.emit('join-room', { roomId: code, playerName: nicknameInput.value.trim() }); });
         }
-      }, 300);
-    }
+      }
+    }, 300);
   }
 })();
 
