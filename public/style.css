@@ -495,13 +495,13 @@ input[type="text"]:focus { border-color: var(--primary); background: #fff; }
 
 /* 工具栏折叠 */
 .solo-toggle-toolbar {
-  position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
-  width: 28px; height: 14px; border: none; border-radius: 0 0 8px 8px;
-  background: #16213e; color: #889; font-size: 0.6rem; cursor: pointer; z-index: 5;
+  display: block; width: 100%; height: 18px; border: none;
+  background: #1a1a2e; color: #667; font-size: 0.6rem; cursor: pointer;
+  flex-shrink: 0;
 }
-#solo-toolbar { position: relative; transition: max-height 0.3s, padding 0.3s; overflow: hidden; }
-#solo-toolbar.collapsed { max-height: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; border-top: none; }
-#solo-toolbar.collapsed .solo-toggle-toolbar { top: auto; bottom: -14px; border-radius: 8px 8px 0 0; transform: translateX(-50%) rotate(180deg); }
+#solo-toolbar { transition: max-height 0.3s, padding 0.3s; overflow: hidden; }
+#solo-toolbar.collapsed { max-height: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }
+#solo-toolbar.collapsed + .solo-actions-row { display: none; }
 
 /* 沉浸模式 */
 .solo-top-bar { transition: transform 0.3s, opacity 0.3s; }
