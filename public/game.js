@@ -832,6 +832,9 @@ const soloOpacitySlider = $('#solo-opacity-slider');
 const soloOpacityVal = $('#solo-opacity-val');
 const soloSmoothSlider = $('#solo-smooth-slider');
 const soloSmoothVal = $('#solo-smooth-val');
+const soloImmerseBtn = $('#solo-immerse-btn');
+const soloExitImmerse = $('#solo-exit-immerse');
+const soloToggleToolbar = $('#solo-toggle-toolbar');
 const soloUndoBtn = $('#solo-undo-btn');
 const soloRedoBtn = $('#solo-redo-btn');
 const soloClearBtn = $('#solo-clear-btn');
@@ -846,7 +849,10 @@ let soloBrush = 'pen';
 let soloColor = '#000000';
 let soloSize = 3;
 let soloOpacity = 1;
-let soloSmooth = 0.5;
+let soloHardness = 0.5; // 0=硬边, 1=柔和
+let soloImmersed = false;
+let soloImmersedTimeout = null;
+let soloToolbarCollapsed = false;
 let soloDrawing = false;
 let soloLastPos = null;
 let soloStrokes = [];
@@ -904,6 +910,35 @@ function redrawAllStrokes() {
   }
 }
 
+// 预渲染画笔笔尖（径向渐变，缓存）
+let brushTipCache = null;
+let brushTipCacheKey = '';
+
+function getBrushTip(color, size, hardness, brush) {
+  if (brush === 'eraser' || brush === 'spray' || brush === 'calligraphy' || brush === 'pencil' || brush === 'crayon') return null;
+  const key = color + '-' + size + '-' + hardness.toFixed(2) + '-' + brush;
+  if (brushTipCache && brushTipCacheKey === key) return brushTipCache;
+  const s = Math.ceil(size * 2) + 4;
+  const c = document.createElement('canvas');
+  c.width = s; c.height = s;
+  const cx = c.getContext('2d');
+  const outerR = s / 2;
+  const innerR = outerR * (1 - hardness);
+  const grad = cx.createRadialGradient(s/2, s/2, innerR, s/2, s/2, outerR);
+  grad.addColorStop(0, color);
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  cx.fillStyle = grad;
+  cx.beginPath(); cx.arc(s/2, s/2, outerR, 0, Math.PI*2); cx.fill();
+  brushTipCache = c; brushTipCacheKey = key;
+  return c;
+}
+
+function stampBrushTip(ctx, x, y, size, tip) {
+  if (!tip) return;
+  const s = tip.width;
+  ctx.drawImage(tip, x - s/2, y - s/2, s, s);
+}
+
 function renderStroke(stroke) {
   const ctx = soloCtx;
   const pts = stroke.points;
@@ -922,7 +957,13 @@ function renderStroke(stroke) {
   }
 
   ctx.globalCompositeOperation = (stroke.brush === 'marker' || stroke.brush === 'crayon') ? 'multiply' : 'source-over';
-  if (stroke.brush === 'glow') { ctx.shadowBlur = stroke.size * 2; ctx.shadowColor = stroke.color; }
+  if (stroke.brush === 'glow') {
+    ctx.shadowBlur = stroke.size * 2; ctx.shadowColor = stroke.color;
+  }
+
+  const hardness = stroke.hardness !== undefined ? stroke.hardness : 0.5;
+  const tip = (stroke.brush === 'pen' || stroke.brush === 'marker' || stroke.brush === 'glow')
+    ? getBrushTip(stroke.color, stroke.size, hardness, stroke.brush) : null;
 
   if (stroke.brush === 'spray') {
     for (const p of pts) {
@@ -990,18 +1031,27 @@ function renderStroke(stroke) {
     ctx.restore(); return;
   }
 
-  // pen / marker / glow / default: 贝塞尔平滑
+  // pen / marker / glow: 笔尖图章 + 贝塞尔插值
   ctx.lineWidth = stroke.size;
   ctx.strokeStyle = stroke.color;
-  const smooth = stroke.smooth !== undefined ? stroke.smooth : 0.5;
-  for (let i = 1; i < pts.length; i++) {
-    if (i >= 2 && smooth > 0.1) {
-      const pp = pts[i-2], p0 = pts[i-1], p1 = pts[i];
-      const t = smooth;
-      const cpX = pp.x + (p0.x - pp.x) * t, cpY = pp.y + (p0.y - pp.y) * t;
-      const midX = p0.x + (p1.x - p0.x) * (1-t), midY = p0.y + (p1.y - p0.y) * (1-t);
-      ctx.beginPath(); ctx.moveTo(cpX, cpY); ctx.quadraticCurveTo(p0.x, p0.y, midX, midY); ctx.stroke();
-    } else {
+  if (tip) {
+    // 沿线图章式绘制
+    for (let i = 0; i < pts.length; i++) {
+      stampBrushTip(ctx, pts[i].x, pts[i].y, stroke.size, tip);
+    }
+    // 填充点间空隙
+    for (let i = 1; i < pts.length; i++) {
+      const dx = pts[i].x - pts[i-1].x, dy = pts[i].y - pts[i-1].y;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+      const steps = Math.ceil(dist / (stroke.size * 0.3));
+      for (let s = 1; s < steps; s++) {
+        const t = s / steps;
+        stampBrushTip(ctx, pts[i-1].x + dx*t, pts[i-1].y + dy*t, stroke.size, tip);
+      }
+    }
+  } else {
+    // 无笔尖的简单线条
+    for (let i = 1; i < pts.length; i++) {
       ctx.beginPath(); ctx.moveTo(pts[i-1].x, pts[i-1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
     }
   }
@@ -1067,7 +1117,7 @@ function soloEnd(e) {
     soloUndoStack = [];
     soloStrokes.push({
       brush: soloBrush, color: soloColor, size: soloSize,
-      opacity: soloOpacity, smooth: soloSmooth, points: [...soloPoints],
+      opacity: soloOpacity, hardness: soloHardness, points: [...soloPoints],
     });
     updateUndoRedoBtns();
   } else if (soloPoints.length === 1) {
@@ -1081,7 +1131,7 @@ function soloEnd(e) {
     soloUndoStack = [];
     soloStrokes.push({
       brush: soloBrush, color: soloColor, size: soloSize,
-      opacity: soloOpacity, smooth: soloSmooth, points: [...soloPoints, {...soloPoints[0]}],
+      opacity: soloOpacity, hardness: soloHardness, points: [...soloPoints, {...soloPoints[0]}],
     });
     updateUndoRedoBtns();
   }
@@ -1143,9 +1193,22 @@ function drawLiveSegment(from, to) {
     ctx.beginPath(); ctx.ellipse(0, 0, w/2, h/2, 0, 0, Math.PI*2);
     ctx.fillStyle = soloColor; ctx.fill(); ctx.restore(); ctx.restore(); return;
   }
-  // 默认：贝塞尔线段
-  ctx.lineWidth = soloSize; ctx.strokeStyle = soloColor;
-  ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
+  // 默认：笔尖图章
+  const tip = (soloBrush === 'pen' || soloBrush === 'marker' || soloBrush === 'glow')
+    ? getBrushTip(soloColor, soloSize, soloHardness, soloBrush) : null;
+  if (tip) {
+    stampBrushTip(ctx, to.x, to.y, soloSize, tip);
+    const dx = to.x - from.x, dy = to.y - from.y;
+    const dist = Math.sqrt(dx*dx+dy*dy);
+    const steps = Math.ceil(dist / (soloSize * 0.3));
+    for (let s = 0; s < steps; s++) {
+      const t = s / steps;
+      stampBrushTip(ctx, from.x + dx*t, from.y + dy*t, soloSize, tip);
+    }
+  } else {
+    ctx.lineWidth = soloSize; ctx.strokeStyle = soloColor;
+    ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -1185,7 +1248,7 @@ soloCanvas.addEventListener('touchend', (e) => {
 function soloPinchMove(e) {
   const m = getTwoFingerMid(e);
   const newZoom = soloPinchStartZoom * (m.dist / soloPinchStartDist);
-  soloCamZoom = Math.max(0.1, Math.min(5, newZoom));
+  soloCamZoom = Math.max(0.01, Math.min(5, newZoom));
   // 以两指中点为中心缩放
   const ratio = soloCamZoom / soloPinchStartZoom;
   soloCamX = m.x - (soloPinchMidX - soloCamX) * ratio;
@@ -1250,8 +1313,9 @@ soloOpacitySlider.addEventListener('input', () => {
 });
 
 soloSmoothSlider.addEventListener('input', () => {
-  soloSmooth = parseInt(soloSmoothSlider.value) / 100;
+  soloHardness = 1 - parseInt(soloSmoothSlider.value) / 100; // 平滑度→硬度：100%平滑=0硬度(柔和)
   soloSmoothVal.textContent = parseInt(soloSmoothSlider.value);
+  brushTipCache = null; // 清除缓存让笔尖重建
 });
 
 $$('.solo-color-btn').forEach(btn => {
@@ -1260,12 +1324,14 @@ $$('.solo-color-btn').forEach(btn => {
     btn.classList.add('active');
     soloColor = btn.dataset.color;
     soloCustomColor.value = soloColor;
+    brushTipCache = null;
   });
 });
 
 soloCustomColor.addEventListener('input', () => {
   soloColor = soloCustomColor.value;
   $$('.solo-color-btn').forEach(b => b.classList.remove('active'));
+  brushTipCache = null;
 });
 
 soloUndoBtn.addEventListener('click', () => {
@@ -1318,19 +1384,59 @@ soloBackBtn.addEventListener('click', () => {
   soloIsPanMode = false; soloPanBtn.classList.remove('active');
 });
 
-// 缩放画布
+// 缩放画布（滚轮）
 soloCanvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   const rect = soloCanvas.getBoundingClientRect();
   const mx = e.clientX - rect.left, my = e.clientY - rect.top;
   const zoom = soloCamZoom * (e.deltaY < 0 ? 1.1 : 0.9);
-  const nz = Math.max(0.1, Math.min(5, zoom));
+  const nz = Math.max(0.01, Math.min(5, zoom));
   soloCamX = mx - (mx - soloCamX) * (nz / soloCamZoom);
   soloCamY = my - (my - soloCamY) * (nz / soloCamZoom);
   soloCamZoom = nz;
   redrawAllStrokes();
   updateZoomBadge();
 }, { passive: false });
+
+// ============ 工具栏折叠 ============
+soloToggleToolbar.addEventListener('click', () => {
+  soloToolbarCollapsed = !soloToolbarCollapsed;
+  soloToolbar.classList.toggle('collapsed', soloToolbarCollapsed);
+  soloToggleToolbar.textContent = soloToolbarCollapsed ? '▲' : '▼';
+});
+
+// ============ 沉浸模式 ============
+soloImmerseBtn.addEventListener('click', enterImmersive);
+soloExitImmerse.addEventListener('click', exitImmersive);
+
+function enterImmersive() {
+  soloImmersed = true;
+  document.querySelector('#solo-top-bar').classList.add('immersed');
+  soloToolbar.classList.add('immersed');
+  soloExitImmerse.classList.remove('hidden');
+  soloToolbarCollapsed = false;
+}
+
+function exitImmersive() {
+  soloImmersed = false;
+  document.querySelector('#solo-top-bar').classList.remove('immersed');
+  soloToolbar.classList.remove('immersed');
+  soloExitImmerse.classList.add('hidden');
+}
+
+// 沉浸模式下点击画布临时显示 UI
+soloCanvas.addEventListener('click', (e) => {
+  if (!soloImmersed) return;
+  const tb = document.querySelector('#solo-top-bar');
+  tb.classList.remove('immersed');
+  soloToolbar.classList.remove('immersed');
+  soloExitImmerse.classList.remove('hidden');
+  clearTimeout(soloImmersedTimeout);
+  soloImmersedTimeout = setTimeout(() => {
+    tb.classList.add('immersed');
+    soloToolbar.classList.add('immersed');
+  }, 2000);
+});
 
 // resize
 window.addEventListener('resize', () => { if (soloScreen.classList.contains('active')) initSoloCanvas(); });

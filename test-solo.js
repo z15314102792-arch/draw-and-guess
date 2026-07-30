@@ -21,10 +21,10 @@ const URL = 'https://draw-and-guess-production-2897.up.railway.app';
   console.log('画布:', canvas ? '✅' : '❌');
 
   const brushCount = await page.evaluate(() => document.querySelectorAll('.solo-brush-btn').length);
-  console.log('画笔数:', brushCount, brushCount === 6 ? '✅' : '❌');
+  console.log('画笔数:', brushCount, brushCount === 9 ? '✅' : '❌');
 
   const sliders = await page.evaluate(() => document.querySelectorAll('.solo-slider').length);
-  console.log('滑块数:', sliders, sliders === 2 ? '✅' : '❌');
+  console.log('滑块数:', sliders, sliders === 3 ? '✅' : '❌');
 
   const colorCount = await page.evaluate(() => document.querySelectorAll('.solo-color-btn').length);
   console.log('颜色数:', colorCount, colorCount >= 12 ? '✅' : '❌');

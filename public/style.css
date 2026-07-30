@@ -493,6 +493,31 @@ input[type="text"]:focus { border-color: var(--primary); background: #fff; }
 }
 .solo-zoom-hint.hidden { opacity: 0; }
 
+/* 工具栏折叠 */
+.solo-toggle-toolbar {
+  position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+  width: 28px; height: 14px; border: none; border-radius: 0 0 8px 8px;
+  background: #16213e; color: #889; font-size: 0.6rem; cursor: pointer; z-index: 5;
+}
+#solo-toolbar { position: relative; transition: max-height 0.3s, padding 0.3s; overflow: hidden; }
+#solo-toolbar.collapsed { max-height: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; border-top: none; }
+#solo-toolbar.collapsed .solo-toggle-toolbar { top: auto; bottom: -14px; border-radius: 8px 8px 0 0; transform: translateX(-50%) rotate(180deg); }
+
+/* 沉浸模式 */
+.solo-top-bar { transition: transform 0.3s, opacity 0.3s; }
+.solo-top-bar.immersed { transform: translateY(-100%); opacity: 0; pointer-events: none; }
+#solo-toolbar.immersed { max-height: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; border-top: none; }
+#solo-toolbar.immersed .solo-toggle-toolbar { display: none; }
+
+.solo-exit-immerse {
+  position: fixed; top: 12px; right: 12px; z-index: 100;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(0,0,0,0.6); color: #fff; border: none;
+  font-size: 1rem; cursor: pointer;
+  transition: opacity 0.3s;
+}
+.solo-exit-immerse.hidden { opacity: 0; pointer-events: none; }
+
 .solo-slider {
   flex: 1; -webkit-appearance: none; height: 6px;
   border-radius: 3px; background: #334; outline: none;
