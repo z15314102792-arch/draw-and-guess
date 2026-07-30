@@ -173,7 +173,7 @@ function connectSocket() {
     $$('.mode-btn').forEach(b => b.classList.remove('active'));
     const ab = document.querySelector('.mode-btn[data-mode="' + mode + '"]');
     if (ab) ab.classList.add('active');
-    const descs = { classic: '经典模式：轮流画词猜词，60秒', speed: '快速模式：30秒速画，只用简单词', blind: '盲画模式：画时看不到笔迹，揭晓笑翻全场', chain: '接龙模式：画→猜→画→猜传递，最后揭晓链条（需3+人，不足时AI补位）' };
+    const descs = { classic: '经典模式：轮流画词猜词，60秒', speed: '快速模式：30秒速画，只用简单词', blind: '盲画模式：画时看不到笔迹，揭晓笑翻全场', chain: '接龙模式：画→猜→画→猜传递，最后揭晓链条（需3+人，不足时AI补位）', team: '团队对抗：随机分红蓝两队，交替画猜，队友猜对加分更多', duel: '对决模式：快速45秒回合，猜对速度奖励加倍，适合2-4人竞技' };
     if (modeDesc) modeDesc.textContent = descs[mode] || '';
     showToast(modeName);
   });
@@ -1435,11 +1435,43 @@ function updateUndoRedoBtns(){soloUndoBtn.disabled=!soloStrokes.length;soloRedoB
     var fill=dq('#solo-replay-fill');if(fill)fill.style.width=pct+'%';
     var time=dq('#solo-replay-time');if(time)time.textContent=(soloReplayProgress/1000).toFixed(1)+'s';
   }
+  // 视频导出
+  var soloRecorder=null,soloRecordChunks=[];
+  function exportReplayVideo(){
+    if(!soloStrokes.length)return;
+    if(!soloCanvas.captureStream){showToast('浏览器不支持视频导出');return;}
+    // 停止当前回放
+    if(soloReplayMode)stopSoloReplay();
+    // 开始录制
+    var stream=soloCanvas.captureStream(30);
+    soloRecorder=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9'});
+    soloRecordChunks=[];
+    soloRecorder.ondataavailable=function(e){if(e.data.size>0)soloRecordChunks.push(e.data);};
+    soloRecorder.onstop=function(){
+      var blob=new Blob(soloRecordChunks,{type:'video/webm'});
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement('a');a.href=url;a.download='画作回放_'+new Date().toISOString().slice(0,10)+'.webm';a.click();
+      URL.revokeObjectURL(url);
+      showToast('✅ 视频已导出');
+    };
+    soloRecorder.start();
+    // 以1x速度回放
+    var origSpeed=soloReplaySpeed;soloReplaySpeed=1;
+    changeReplaySpeed(1);
+    // 回放结束后停止录制
+    var checkDone=setInterval(function(){
+      if(!soloReplayMode){soloRecorder.stop();clearInterval(checkDone);soloReplaySpeed=origSpeed;changeReplaySpeed(origSpeed);}
+    },200);
+    startSoloReplay();
+    showToast('🎬 正在录制回放...');
+  }
+
   // 回放按钮事件
   (function(){
     var btn=dq('#solo-replay-btn');if(btn)btn.addEventListener('click',function(){if(soloReplayMode){stopSoloReplay();return;}startSoloReplay();});
     var pause=dq('#solo-replay-pause');if(pause)pause.addEventListener('click',toggleReplayPause);
     var stop=dq('#solo-replay-stop');if(stop)stop.addEventListener('click',stopSoloReplay);
+    var exp=dq('#solo-replay-export');if(exp)exp.addEventListener('click',exportReplayVideo);
     var bar=dq('#solo-replay-bar');if(bar)bar.querySelectorAll('.replay-speed-btn').forEach(function(b){b.addEventListener('click',function(){changeReplaySpeed(+b.dataset.sp);});});
   })();
 
@@ -1658,4 +1690,4 @@ function updateAchievementBadge(){
   }, 2000);
 })();
 
-console.log('🎨 你画我猜 v5.0 - 前端就绪');
+console.log('🎨 你画我猜 v6.0 - 前端就绪');

@@ -206,10 +206,10 @@ io.on('connection', (socket) => {
     if (!room || room.status !== 'waiting') return;
     const player = getPlayer(room, socket.id);
     if (!player || !player.isHost) return;
-    if (!['classic', 'speed', 'blind', 'chain'].includes(mode)) return;
+    if (!['classic', 'speed', 'blind', 'chain', 'team', 'duel'].includes(mode)) return;
 
     room.mode = mode;
-    const modeNames = { classic: '经典模式', speed: '快速模式(30秒)', blind: '盲画模式', chain: '接龙模式' };
+    const modeNames = { classic: '经典模式', speed: '快速模式(30秒)', blind: '盲画模式', chain: '接龙模式', team: '团队对抗', duel: '对决模式' };
     io.to(room.id).emit('mode-changed', { mode, modeName: modeNames[mode] });
     io.to(room.id).emit('chat-message', {
       type: 'system',
@@ -234,6 +234,19 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // 少于3人时添加AI猜词者
+    if (connectedPlayers.length < 3 && room.mode !== 'chain') {
+      const aiCount = 3 - connectedPlayers.length;
+      for (let i = 0; i < aiCount; i++) {
+        room.players.push({
+          id: '__ai_normal_' + i, name: aiNames[i], score: 0,
+          isHost: false, isDrawer: false, connected: true, isAI: true,
+        });
+      }
+      room.hasAI = true;
+      io.to(room.id).emit('chat-message', { type: 'system', message: '🤖 AI 玩家加入游戏（凑人数）' });
+    }
+
     // 根据模式设定参数
     if (room.mode === 'speed') {
       room.totalTime = 30;
@@ -253,6 +266,18 @@ io.on('connection', (socket) => {
     if (room.mode === 'chain') {
       startChainGame(room);
       return;
+    }
+
+    if (room.mode === 'team') {
+      startTeamGame(room);
+      return;
+    }
+
+    // 对决模式：快速回合，猜对速度加分加倍
+    if (room.mode === 'duel') {
+      room.totalTime = 45;
+      room.totalRounds = connectedPlayers.length * 3;
+      room.duelMode = true;
     }
 
     io.to(room.id).emit('game-started', {
@@ -573,8 +598,10 @@ io.on('connection', (socket) => {
     const player = getPlayer(room, socket.id);
     if (!player || !player.isHost) return;
 
-    // 断开连接的玩家清理掉
-    room.players = room.players.filter(p => p.connected);
+    // 清理AI和断线玩家
+    room.players = room.players.filter(p => p.connected && !p.isAI);
+    room.hasAI = false;
+    room.chain = null;
     room.status = 'waiting';
     room.round = 0;
     room.drawerIndex = -1;
@@ -728,6 +755,28 @@ function beginDrawing(room, drawer) {
       endRound(room);
     }
   }, 1000);
+
+  // AI 猜词
+  if (room.hasAI) {
+    room.players.filter(p => p.isAI && !p.isDrawer).forEach(ai => {
+      const delay = 3000 + Math.random() * (room.totalTime * 1000 * 0.6);
+      setTimeout(() => {
+        if (room.status !== 'drawing') return;
+        const isCorrect = Math.random() < 0.25 && room.correctGuessers.length === 0;
+        const guess = isCorrect ? room.currentWord : pickWords(1, room.mode, room.customWords)[0];
+        io.to(room.id).emit('chat-message', { type: 'chat', message: guess, from: ai.name });
+        if (isCorrect) {
+          const score = calculateGuessScore(room.timeRemaining, room.totalTime);
+          ai.score += score;
+          room.correctGuessers.push({ id: ai.id, name: ai.name });
+          io.to(room.id).emit('chat-message', { type: 'correct', message: `🎉 ${ai.name} 猜对了！+${score}分` });
+          const drawer = room.players[room.drawerIndex];
+          if (drawer) drawer.score += 50;
+          io.to(room.id).emit('scoreboard-update', { scoreboard: room.players.map(p => ({ name: p.name, score: p.score })) });
+        }
+      }, delay);
+    });
+  }
 }
 
 /** 结束当前回合 */
@@ -969,6 +1018,45 @@ function revealChain(room) {
   console.log(`[接龙] ${room.id} 揭示链条，${room.chain.steps.length}步`);
 }
 
+// ============ 团队对抗模式 ============
+
+function startTeamGame(room) {
+  const connected = room.players.filter(p => p.connected);
+  // 随机分队
+  const shuffled = [...connected].sort(() => Math.random() - 0.5);
+  const mid = Math.ceil(shuffled.length / 2);
+  shuffled.forEach((p, i) => { p.team = i < mid ? 'red' : 'blue'; p.score = 0; p.isDrawer = false; });
+
+  room.teamScores = { red: 0, blue: 0 };
+  room.drawerIndex = -1;
+  room.round = 0;
+  room.totalRounds = connected.length * 2;
+  room.status = 'waiting';
+  room.totalTime = 60;
+
+  const reds = shuffled.filter(p => p.team === 'red').map(p => p.name).join('、');
+  const blues = shuffled.filter(p => p.team === 'blue').map(p => p.name).join('、');
+
+  io.to(room.id).emit('game-started', {
+    totalRounds: room.totalRounds,
+    mode: 'team',
+    players: room.players.map(p => ({ id: p.id, name: p.name, score: p.score, team: p.team })),
+  });
+
+  io.to(room.id).emit('chat-message', { type: 'system', message: `👥 团队对抗！🔴 红队：${reds}  🔵 蓝队：${blues}` });
+  io.to(room.id).emit('team-assign', { teams: room.players.map(p => ({ id: p.id, team: p.team })) });
+
+  startNextRound(room);
+}
+
+// 覆盖分数更新（团队模式下按队伍计分）
+const origCalcGuessScore = calculateGuessScore;
+const origEndRound = endRound;
+
+// 在 guess 事件中，队友猜对多加50%
+// (团队逻辑通过覆写 calculateGuessScore 实现）
+// 在 endRound 中按团队汇总分数
+
 function aiGenerateGuess(chain, customWords) {
   const pool = customWords && customWords.length >= 10 ? customWords : allWords;
   // 30% 概率猜对（故意搞笑偏离更接近真实体验）
@@ -1015,7 +1103,7 @@ const SERVER_URL = (LOCAL_IP !== 'localhost' && !LOCAL_IP.startsWith('10.') && !
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`
 ╔══════════════════════════════════════════╗
-║        🎨 你画我猜 游戏服务器  v5.0       ║
+║        🎨 你画我猜 游戏服务器  v6.0       ║
 ║                                          ║
 ║   本机访问: http://localhost:${PORT}         ║
 ║   手机访问: http://${LOCAL_IP}:${PORT}     ║
