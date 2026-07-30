@@ -525,7 +525,12 @@ createRoomBtn.addEventListener('click', () => {
   const name = nicknameInput.value.trim() || '玩家';
   playerName = name;
   connectSocket();
-  socket.once('connect', () => { socket.emit('create-room', { playerName: name }); });
+  // 先绑监听再检查，避免竞态
+  if (socket.connected) {
+    socket.emit('create-room', { playerName: name });
+  } else {
+    socket.once('connect', () => { socket.emit('create-room', { playerName: name }); });
+  }
 });
 
 joinRoomBtn.addEventListener('click', () => {
@@ -534,7 +539,11 @@ joinRoomBtn.addEventListener('click', () => {
   const name = nicknameInput.value.trim() || '玩家';
   playerName = name;
   connectSocket();
-  socket.once('connect', () => { socket.emit('join-room', { roomId: code, playerName: name }); });
+  if (socket.connected) {
+    socket.emit('join-room', { roomId: code, playerName: name });
+  } else {
+    socket.once('connect', () => { socket.emit('join-room', { roomId: code, playerName: name }); });
+  }
 });
 roomCodeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') joinRoomBtn.click(); });
 
