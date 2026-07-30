@@ -464,14 +464,34 @@ input[type="text"]:focus { border-color: var(--primary); background: #fff; }
 }
 .solo-label { font-size: 0.75rem; color: #8899aa; min-width: 55px; }
 
-.solo-brushes { display: flex; gap: 4px; }
+.solo-brushes { display: flex; gap: 3px; flex-wrap: wrap; }
 .solo-brush-btn {
-  width: 36px; height: 36px; border: 2px solid #334;
-  border-radius: 8px; background: #1a1a2e; font-size: 1.1rem;
-  cursor: pointer; transition: all 0.15s;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  min-width: 40px; padding: 4px 6px;
+  border: 2px solid #334; border-radius: 8px;
+  background: #1a1a2e; cursor: pointer; transition: all 0.15s;
 }
 .solo-brush-btn:active { transform: scale(0.92); }
 .solo-brush-btn.active { border-color: #FF6B9D; background: #2a1a2e; box-shadow: 0 0 8px rgba(255,107,157,0.3); }
+.solo-brush-btn.eraser-btn.active { border-color: #EF5350; background: #2a1a1e; box-shadow: 0 0 8px rgba(239,83,80,0.3); }
+.brush-icon { font-size: 1.2rem; line-height: 1; }
+.brush-label { font-size: 0.6rem; color: #889; line-height: 1; }
+
+.solo-pan-btn {
+  width: 32px; height: 32px; border: 2px solid #334;
+  border-radius: 8px; background: #1a1a2e; font-size: 1rem;
+  cursor: pointer; transition: all 0.15s; color: #fff;
+}
+.solo-pan-btn.active { border-color: #FF6B9D; background: #2a1a2e; }
+.solo-zoom-badge { font-size: 0.75rem; color: #889; margin-left: 4px; }
+
+.solo-zoom-hint {
+  position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.7); color: #fff; padding: 8px 16px;
+  border-radius: 20px; font-size: 0.8rem; pointer-events: none;
+  transition: opacity 0.3s;
+}
+.solo-zoom-hint.hidden { opacity: 0; }
 
 .solo-slider {
   flex: 1; -webkit-appearance: none; height: 6px;

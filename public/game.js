@@ -817,7 +817,7 @@ window.addEventListener('resize', resizeCanvas);
 window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 300));
 
 // ##########################################################
-// #                  单人创作模式 (Solo Mode)                #
+// #               单人创作模式 v2 (Solo Mode)                #
 // ##########################################################
 
 // DOM 引用
@@ -826,35 +826,51 @@ const soloModeBtn = $('#solo-mode-btn');
 const soloBackBtn = $('#solo-back-btn');
 const soloCanvas = $('#solo-canvas');
 const soloCtx = soloCanvas.getContext('2d');
-const soloBrushInfo = $('#solo-brush-info');
 const soloSizeSlider = $('#solo-size-slider');
 const soloSizeVal = $('#solo-size-val');
 const soloOpacitySlider = $('#solo-opacity-slider');
 const soloOpacityVal = $('#solo-opacity-val');
+const soloSmoothSlider = $('#solo-smooth-slider');
+const soloSmoothVal = $('#solo-smooth-val');
 const soloUndoBtn = $('#solo-undo-btn');
 const soloRedoBtn = $('#solo-redo-btn');
 const soloClearBtn = $('#solo-clear-btn');
 const soloSaveBtn = $('#solo-save-btn');
 const soloCustomColor = $('#solo-custom-color');
+const soloPanBtn = $('#solo-pan-btn');
+const soloZoomBadge = $('#solo-zoom-badge');
+const soloZoomHint = $('#solo-zoom-hint');
 
 // 状态
 let soloBrush = 'pen';
 let soloColor = '#000000';
 let soloSize = 3;
 let soloOpacity = 1;
+let soloSmooth = 0.5;
 let soloDrawing = false;
-let soloLastPoint = null;
-let soloStrokes = [];        // [{ brush, color, size, opacity, points: [{x,y,speed}] }]
+let soloLastPos = null;
+let soloStrokes = [];
 let soloUndoStack = [];
-let soloPoints = [];         // 当前笔画点
+let soloPoints = [];
 
-// ============ Solo 初始化 ============
+// 无限画布：摄像头状态
+let soloCamX = 0, soloCamY = 0, soloCamZoom = 1;
+let soloPanning = false;
+let soloPinching = false;
+let soloPinchStartDist = 0;
+let soloPinchStartZoom = 1;
+let soloPinchMidX = 0, soloPinchMidY = 0;
+let soloLastPanX = 0, soloLastPanY = 0;
+let soloIsPanMode = false;  // ✋ 拖拽模式
+let soloTwoFinger = false;
+
+// ============ 初始化 ============
 function initSoloCanvas() {
   const wrap = $('#solo-canvas-wrap');
   const maxW = wrap.clientWidth - 8;
   const maxH = wrap.clientHeight - 8;
-  const w = Math.min(maxW, 800);
-  const h = Math.min(maxH, 600);
+  const w = Math.min(maxW, 1200);
+  const h = Math.min(maxH, 900);
   const dpr = window.devicePixelRatio || 1;
   soloCanvas.style.width = w + 'px';
   soloCanvas.style.height = h + 'px';
@@ -862,16 +878,27 @@ function initSoloCanvas() {
   soloCanvas.height = h * dpr;
   soloCtx.setTransform(1, 0, 0, 1, 0, 0);
   soloCtx.scale(dpr, dpr);
-  soloCtx.fillStyle = '#FFFFFF';
-  soloCtx.fillRect(0, 0, w, h);
+  redrawAllStrokes();
+}
+
+function applyCameraTransform() {
+  const dpr = window.devicePixelRatio || 1;
+  soloCtx.setTransform(1, 0, 0, 1, 0, 0);
+  soloCtx.scale(dpr, dpr);
+  soloCtx.translate(soloCamX, soloCamY);
+  soloCtx.scale(soloCamZoom, soloCamZoom);
 }
 
 function redrawAllStrokes() {
   const w = parseFloat(soloCanvas.style.width);
   const h = parseFloat(soloCanvas.style.height);
+  const dpr = window.devicePixelRatio || 1;
+  soloCtx.setTransform(1, 0, 0, 1, 0, 0);
+  soloCtx.scale(dpr, dpr);
   soloCtx.clearRect(0, 0, w, h);
   soloCtx.fillStyle = '#FFFFFF';
   soloCtx.fillRect(0, 0, w, h);
+  applyCameraTransform();
   for (const stroke of soloStrokes) {
     renderStroke(stroke);
   }
@@ -882,258 +909,349 @@ function renderStroke(stroke) {
   const pts = stroke.points;
   if (pts.length < 2) return;
   ctx.save();
-  ctx.globalAlpha = stroke.opacity;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  ctx.globalAlpha = stroke.opacity;
 
   if (stroke.brush === 'eraser') {
     ctx.globalCompositeOperation = 'destination-out';
-    ctx.strokeStyle = 'rgba(0,0,0,1)';
     ctx.lineWidth = stroke.size * 2;
-    for (let i = 1; i < pts.length; i++) {
-      ctx.beginPath();
-      ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
-      ctx.lineTo(pts[i].x, pts[i].y);
-      ctx.stroke();
-    }
-    ctx.restore();
-    return;
+    ctx.strokeStyle = 'rgba(0,0,0,1)';
+    for (let i = 1; i < pts.length; i++) { ctx.beginPath(); ctx.moveTo(pts[i-1].x, pts[i-1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke(); }
+    ctx.restore(); return;
   }
 
-  ctx.globalCompositeOperation = stroke.brush === 'marker' ? 'multiply' : 'source-over';
-  ctx.strokeStyle = stroke.color;
+  ctx.globalCompositeOperation = (stroke.brush === 'marker' || stroke.brush === 'crayon') ? 'multiply' : 'source-over';
+  if (stroke.brush === 'glow') { ctx.shadowBlur = stroke.size * 2; ctx.shadowColor = stroke.color; }
 
   if (stroke.brush === 'spray') {
     for (const p of pts) {
-      const particles = Math.floor(stroke.size * 2);
-      for (let j = 0; j < particles; j++) {
-        const angle = Math.random() * Math.PI * 2;
-        const dist = Math.random() * stroke.size * 2;
-        const px = p.x + Math.cos(angle) * dist;
-        const py = p.y + Math.sin(angle) * dist;
+      const n = Math.floor(stroke.size * 2);
+      for (let j = 0; j < n; j++) {
+        const a = Math.random() * Math.PI * 2, d = Math.random() * stroke.size * 2;
+        ctx.globalAlpha = stroke.opacity * Math.random() * 0.25;
         ctx.fillStyle = stroke.color;
-        ctx.globalAlpha = stroke.opacity * Math.random() * 0.3;
-        ctx.beginPath();
-        ctx.arc(px, py, 0.5 + Math.random(), 0, Math.PI * 2);
-        ctx.fill();
+        ctx.beginPath(); ctx.arc(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 0.5 + Math.random(), 0, Math.PI * 2); ctx.fill();
       }
     }
-    ctx.restore();
-    return;
+    ctx.restore(); return;
   }
 
-  // 绘制贝塞尔曲线
-  ctx.lineWidth = stroke.size;
-  for (let i = 1; i < pts.length; i++) {
-    const p0 = pts[i - 1];
-    const p1 = pts[i];
+  if (stroke.brush === 'water') {
+    for (let l = 0; l < 3; l++) {
+      ctx.globalAlpha = stroke.opacity * 0.12;
+      ctx.lineWidth = stroke.size + (l * stroke.size * 0.8);
+      ctx.strokeStyle = stroke.color;
+      for (let i = 1; i < pts.length; i++) { ctx.beginPath(); ctx.moveTo(pts[i-1].x, pts[i-1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke(); }
+    }
+    ctx.restore(); return;
+  }
 
-    if (stroke.brush === 'water') {
-      // 水彩：多层半透明圆
-      const layers = 3;
-      for (let l = 0; l < layers; l++) {
-        ctx.globalAlpha = stroke.opacity * 0.15;
-        ctx.lineWidth = stroke.size + (l * stroke.size * 0.8);
-        ctx.strokeStyle = stroke.color;
-        ctx.beginPath();
-        ctx.moveTo(p0.x, p0.y);
-        ctx.lineTo(p1.x, p1.y);
-        ctx.stroke();
+  if (stroke.brush === 'pencil') {
+    ctx.lineWidth = stroke.size * 0.7;
+    ctx.strokeStyle = stroke.color;
+    ctx.globalAlpha = stroke.opacity * 0.85;
+    for (let i = 1; i < pts.length; i++) {
+      const dx = pts[i].x - pts[i-1].x, dy = pts[i].y - pts[i-1].y;
+      const wobble = stroke.size * 0.15;
+      const ox = (Math.random() - 0.5) * wobble, oy = (Math.random() - 0.5) * wobble;
+      ctx.beginPath(); ctx.moveTo(pts[i-1].x + ox, pts[i-1].y + oy);
+      ctx.lineTo(pts[i].x + ox, pts[i].y + oy); ctx.stroke();
+    }
+    ctx.restore(); return;
+  }
+
+  if (stroke.brush === 'crayon') {
+    ctx.lineWidth = stroke.size * 1.2;
+    ctx.strokeStyle = stroke.color;
+    ctx.globalAlpha = stroke.opacity * 0.7;
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 1; i < pts.length; i++) {
+        const wobble = stroke.size * 0.3;
+        ctx.beginPath(); ctx.moveTo(pts[i-1].x + (Math.random()-0.5)*wobble, pts[i-1].y + (Math.random()-0.5)*wobble);
+        ctx.lineTo(pts[i].x + (Math.random()-0.5)*wobble, pts[i].y + (Math.random()-0.5)*wobble); ctx.stroke();
       }
-    } else if (stroke.brush === 'calligraphy') {
-      // 书法：根据移动方向旋转椭圆，速度越快越细
-      const dx = p1.x - p0.x;
-      const dy = p1.y - p0.y;
-      const speed = Math.sqrt(dx * dx + dy * dy);
-      const w = stroke.size * (1 + 1 / (1 + speed * 0.3));
-      const h = stroke.size * (1 / (1 + speed * 0.1));
+    }
+    ctx.restore(); return;
+  }
+
+  if (stroke.brush === 'calligraphy') {
+    for (let i = 1; i < pts.length; i++) {
+      const p0 = pts[i-1], p1 = pts[i];
+      const dx = p1.x - p0.x, dy = p1.y - p0.y;
+      const speed = Math.sqrt(dx*dx+dy*dy);
+      const w = stroke.size * (1 + 1/(1+speed*0.3));
+      const h = stroke.size * (1/(1+speed*0.1));
       const angle = Math.atan2(dy, dx);
-      ctx.save();
-      ctx.translate(p0.x, p0.y);
-      ctx.rotate(angle);
-      ctx.beginPath();
-      ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
-      ctx.fillStyle = stroke.color;
-      ctx.fill();
-      ctx.restore();
+      ctx.save(); ctx.translate(p0.x, p0.y); ctx.rotate(angle);
+      ctx.beginPath(); ctx.ellipse(0, 0, w/2, h/2, 0, 0, Math.PI*2);
+      ctx.fillStyle = stroke.color; ctx.fill(); ctx.restore();
+    }
+    ctx.restore(); return;
+  }
+
+  // pen / marker / glow / default: 贝塞尔平滑
+  ctx.lineWidth = stroke.size;
+  ctx.strokeStyle = stroke.color;
+  const smooth = stroke.smooth !== undefined ? stroke.smooth : 0.5;
+  for (let i = 1; i < pts.length; i++) {
+    if (i >= 2 && smooth > 0.1) {
+      const pp = pts[i-2], p0 = pts[i-1], p1 = pts[i];
+      const t = smooth;
+      const cpX = pp.x + (p0.x - pp.x) * t, cpY = pp.y + (p0.y - pp.y) * t;
+      const midX = p0.x + (p1.x - p0.x) * (1-t), midY = p0.y + (p1.y - p0.y) * (1-t);
+      ctx.beginPath(); ctx.moveTo(cpX, cpY); ctx.quadraticCurveTo(p0.x, p0.y, midX, midY); ctx.stroke();
     } else {
-      // 钢笔/马克笔：二次贝塞尔平滑
-      if (i >= 2) {
-        const pp = pts[i - 2];
-        const cpX = (pp.x + p0.x) / 2;
-        const cpY = (pp.y + p0.y) / 2;
-        const midX = (p0.x + p1.x) / 2;
-        const midY = (p0.y + p1.y) / 2;
-        ctx.beginPath();
-        ctx.moveTo(cpX, cpY);
-        ctx.quadraticCurveTo(p0.x, p0.y, midX, midY);
-        ctx.stroke();
-      } else {
-        ctx.beginPath();
-        ctx.moveTo(p0.x, p0.y);
-        ctx.lineTo(p1.x, p1.y);
-        ctx.stroke();
-      }
+      ctx.beginPath(); ctx.moveTo(pts[i-1].x, pts[i-1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
     }
   }
   ctx.restore();
 }
 
-// ============ Solo 事件处理 ============
+// ============ 坐标转换（屏幕 → 画布） ============
 function getSoloPos(e) {
   const rect = soloCanvas.getBoundingClientRect();
   const cx = e.touches ? e.touches[0].clientX : e.clientX;
   const cy = e.touches ? e.touches[0].clientY : e.clientY;
-  const scaleX = parseFloat(soloCanvas.style.width) / rect.width;
-  const scaleY = parseFloat(soloCanvas.style.height) / rect.height;
+  const sx = cx - rect.left, sy = cy - rect.top;
+  // 屏幕坐标 → 画布世界坐标
+  const w = parseFloat(soloCanvas.style.width), h = parseFloat(soloCanvas.style.height);
   return {
-    x: (cx - rect.left) * scaleX,
-    y: (cy - rect.top) * scaleY,
-    time: Date.now(),
+    x: (sx - soloCamX) / soloCamZoom,
+    y: (sy - soloCamY) / soloCamZoom,
+    rawX: sx, rawY: sy,
   };
 }
 
+function getTwoFingerMid(e) {
+  const r = soloCanvas.getBoundingClientRect();
+  const x1 = e.touches[0].clientX - r.left, y1 = e.touches[0].clientY - r.top;
+  const x2 = e.touches[1].clientX - r.left, y2 = e.touches[1].clientY - r.top;
+  return { x: (x1+x2)/2, y: (y1+y2)/2, dist: Math.hypot(x2-x1, y2-y1) };
+}
+
+// ============ 绘画事件 ============
 function soloStart(e) {
+  if (soloTwoFinger || soloPinching) return;
+  if (soloIsPanMode) { soloStartPan(e); return; }
   e.preventDefault();
   soloDrawing = true;
   const pt = getSoloPos(e);
-  soloLastPoint = pt;
+  soloLastPos = pt;
   soloPoints = [pt];
-  // 点一个点
-  soloCtx.fillStyle = soloColor;
-  soloCtx.globalAlpha = soloOpacity;
-  soloCtx.beginPath();
-  soloCtx.arc(pt.x, pt.y, soloSize / 2, 0, Math.PI * 2);
-  soloCtx.fill();
+  // 不画点！修复黑点 bug — 只在 move 时画线
 }
 
 function soloMove(e) {
+  if (soloPinching) { soloPinchMove(e); return; }
+  if (soloPanning) { soloPanMove(e); return; }
   if (!soloDrawing) return;
   e.preventDefault();
   const pt = getSoloPos(e);
-  const dx = pt.x - soloLastPoint.x;
-  const dy = pt.y - soloLastPoint.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-
-  // 最小采样距离
-  if (dist < 2) return;
-
-  pt.speed = dist / Math.max(1, pt.time - soloLastPoint.time);
+  const dx = pt.x - soloLastPos.x, dy = pt.y - soloLastPos.y;
+  if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
   soloPoints.push(pt);
-
-  // 实时渲染当前段
-  const ctx = soloCtx;
-  ctx.save();
-  ctx.globalAlpha = soloOpacity;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-
-  if (soloBrush === 'eraser') {
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.lineWidth = soloSize * 2;
-    ctx.strokeStyle = 'rgba(0,0,0,1)';
-    ctx.beginPath();
-    ctx.moveTo(soloLastPoint.x, soloLastPoint.y);
-    ctx.lineTo(pt.x, pt.y);
-    ctx.stroke();
-  } else if (soloBrush === 'spray') {
-    const particles = Math.floor(soloSize * 2);
-    for (let j = 0; j < particles; j++) {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = Math.random() * soloSize * 2;
-      ctx.fillStyle = soloColor;
-      ctx.globalAlpha = soloOpacity * Math.random() * 0.3;
-      ctx.beginPath();
-      ctx.arc(pt.x + Math.cos(angle) * dist, pt.y + Math.sin(angle) * dist, 0.5 + Math.random(), 0, Math.PI * 2);
-      ctx.fill();
-    }
-  } else if (soloBrush === 'water') {
-    for (let l = 0; l < 3; l++) {
-      ctx.globalAlpha = soloOpacity * 0.12;
-      ctx.lineWidth = soloSize + (l * soloSize * 0.8);
-      ctx.strokeStyle = soloColor;
-      ctx.beginPath();
-      ctx.moveTo(soloLastPoint.x, soloLastPoint.y);
-      ctx.lineTo(pt.x, pt.y);
-      ctx.stroke();
-    }
-  } else if (soloBrush === 'calligraphy') {
-    const speed = dist / Math.max(1, pt.time - soloLastPoint.time);
-    const w = soloSize * (1 + 1 / (1 + speed * 0.3));
-    const h = soloSize * (1 / (1 + speed * 0.1));
-    const angle = Math.atan2(dy, dx);
-    ctx.save();
-    ctx.translate(soloLastPoint.x, soloLastPoint.y);
-    ctx.rotate(angle);
-    ctx.beginPath();
-    ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
-    ctx.fillStyle = soloColor;
-    ctx.fill();
-    ctx.restore();
-  } else {
-    // 钢笔/马克笔：贝塞尔平滑
-    ctx.lineWidth = soloSize;
-    ctx.strokeStyle = soloColor;
-    if (soloBrush === 'marker') ctx.globalCompositeOperation = 'multiply';
-    ctx.beginPath();
-    if (soloPoints.length >= 3) {
-      const pp = soloPoints[soloPoints.length - 3];
-      const cpX = (pp.x + soloLastPoint.x) / 2;
-      const cpY = (pp.y + soloLastPoint.y) / 2;
-      const midX = (soloLastPoint.x + pt.x) / 2;
-      const midY = (soloLastPoint.y + pt.y) / 2;
-      ctx.moveTo(cpX, cpY);
-      ctx.quadraticCurveTo(soloLastPoint.x, soloLastPoint.y, midX, midY);
-    } else {
-      ctx.moveTo(soloLastPoint.x, soloLastPoint.y);
-      ctx.lineTo(pt.x, pt.y);
-    }
-    ctx.stroke();
-  }
-  ctx.restore();
-  soloLastPoint = pt;
+  applyCameraTransform();
+  drawLiveSegment(soloLastPos, pt);
+  soloLastPos = pt;
 }
 
 function soloEnd(e) {
+  if (soloPinching) { soloPinchEnd(e); return; }
+  if (soloPanning) { soloEndPan(e); return; }
   if (!soloDrawing) return;
   e.preventDefault();
   soloDrawing = false;
-  soloLastPoint = null;
-
+  soloLastPos = null;
   if (soloPoints.length > 1) {
-    // 保存笔画到历史
     soloUndoStack = [];
     soloStrokes.push({
-      brush: soloBrush,
-      color: soloColor,
-      size: soloSize,
-      opacity: soloOpacity,
-      points: [...soloPoints],
+      brush: soloBrush, color: soloColor, size: soloSize,
+      opacity: soloOpacity, smooth: soloSmooth, points: [...soloPoints],
+    });
+    updateUndoRedoBtns();
+  } else if (soloPoints.length === 1) {
+    // 单击画点
+    applyCameraTransform();
+    soloCtx.fillStyle = soloBrush === 'eraser' ? '#FFFFFF' : soloColor;
+    soloCtx.globalAlpha = soloOpacity;
+    soloCtx.beginPath();
+    soloCtx.arc(soloPoints[0].x, soloPoints[0].y, soloSize/2, 0, Math.PI*2);
+    soloCtx.fill();
+    soloUndoStack = [];
+    soloStrokes.push({
+      brush: soloBrush, color: soloColor, size: soloSize,
+      opacity: soloOpacity, smooth: soloSmooth, points: [...soloPoints, {...soloPoints[0]}],
     });
     updateUndoRedoBtns();
   }
   soloPoints = [];
 }
 
-// ============ Solo UI 控制器 ============
+function drawLiveSegment(from, to) {
+  const ctx = soloCtx; ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.globalAlpha = soloOpacity;
+
+  if (soloBrush === 'eraser') {
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.lineWidth = soloSize * 2; ctx.strokeStyle = 'rgba(0,0,0,1)';
+    ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
+    ctx.restore(); return;
+  }
+  if (soloBrush === 'glow') { ctx.shadowBlur = soloSize * 2; ctx.shadowColor = soloColor; }
+  ctx.globalCompositeOperation = (soloBrush === 'marker' || soloBrush === 'crayon') ? 'multiply' : 'source-over';
+
+  if (soloBrush === 'spray') {
+    const n = Math.floor(soloSize * 2);
+    for (let j = 0; j < n; j++) {
+      const a = Math.random()*Math.PI*2, d = Math.random()*soloSize*2;
+      ctx.globalAlpha = soloOpacity * Math.random() * 0.25;
+      ctx.fillStyle = soloColor;
+      ctx.beginPath(); ctx.arc(to.x+Math.cos(a)*d, to.y+Math.sin(a)*d, 0.5+Math.random(), 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore(); return;
+  }
+  if (soloBrush === 'water') {
+    for (let l = 0; l < 3; l++) {
+      ctx.globalAlpha = soloOpacity * 0.12; ctx.lineWidth = soloSize + (l*soloSize*0.8);
+      ctx.strokeStyle = soloColor;
+      ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
+    }
+    ctx.restore(); return;
+  }
+  if (soloBrush === 'pencil') {
+    ctx.lineWidth = soloSize * 0.7; ctx.strokeStyle = soloColor;
+    ctx.globalAlpha = soloOpacity * 0.85;
+    const wb = soloSize * 0.15, ox = (Math.random()-0.5)*wb, oy = (Math.random()-0.5)*wb;
+    ctx.beginPath(); ctx.moveTo(from.x+ox, from.y+oy); ctx.lineTo(to.x+ox, to.y+oy); ctx.stroke();
+    ctx.restore(); return;
+  }
+  if (soloBrush === 'crayon') {
+    ctx.lineWidth = soloSize * 1.2; ctx.strokeStyle = soloColor;
+    ctx.globalAlpha = soloOpacity * 0.7;
+    for (let p = 0; p < 2; p++) {
+      const wb = soloSize * 0.3;
+      ctx.beginPath(); ctx.moveTo(from.x+(Math.random()-0.5)*wb, from.y+(Math.random()-0.5)*wb);
+      ctx.lineTo(to.x+(Math.random()-0.5)*wb, to.y+(Math.random()-0.5)*wb); ctx.stroke();
+    }
+    ctx.restore(); return;
+  }
+  if (soloBrush === 'calligraphy') {
+    const dx = to.x-from.x, dy = to.y-from.y, speed = Math.sqrt(dx*dx+dy*dy);
+    const w = soloSize*(1+1/(1+speed*0.3)), h = soloSize*(1/(1+speed*0.1));
+    ctx.save(); ctx.translate(from.x, from.y); ctx.rotate(Math.atan2(dy, dx));
+    ctx.beginPath(); ctx.ellipse(0, 0, w/2, h/2, 0, 0, Math.PI*2);
+    ctx.fillStyle = soloColor; ctx.fill(); ctx.restore(); ctx.restore(); return;
+  }
+  // 默认：贝塞尔线段
+  ctx.lineWidth = soloSize; ctx.strokeStyle = soloColor;
+  ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
+  ctx.restore();
+}
+
+// ============ 无限画布：两指缩放/平移 ============
+soloCanvas.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    soloPinching = true; soloTwoFinger = true;
+    soloDrawing = false;
+    const m = getTwoFingerMid(e);
+    soloPinchStartDist = m.dist; soloPinchStartZoom = soloCamZoom;
+    soloPinchMidX = m.x; soloPinchMidY = m.y;
+    soloZoomHint.classList.remove('hidden');
+  } else if (e.touches.length === 1 && !soloPinching) {
+    soloTwoFinger = false;
+    soloStart(e);
+  }
+}, { passive: false });
+
+soloCanvas.addEventListener('touchmove', (e) => {
+  if (e.touches.length === 2 && soloPinching) {
+    e.preventDefault();
+    soloPinchMove(e);
+  } else if (soloPanning) {
+    soloPanMove(e);
+  } else if (!soloPinching) {
+    soloMove(e);
+  }
+}, { passive: false });
+
+soloCanvas.addEventListener('touchend', (e) => {
+  if (e.touches.length < 2 && soloPinching) { soloPinchEnd(e); return; }
+  if (e.touches.length === 0) { soloTwoFinger = false; soloPinching = false; }
+  soloEnd(e);
+});
+
+function soloPinchMove(e) {
+  const m = getTwoFingerMid(e);
+  const newZoom = soloPinchStartZoom * (m.dist / soloPinchStartDist);
+  soloCamZoom = Math.max(0.1, Math.min(5, newZoom));
+  // 以两指中点为中心缩放
+  const ratio = soloCamZoom / soloPinchStartZoom;
+  soloCamX = m.x - (soloPinchMidX - soloCamX) * ratio;
+  soloCamY = m.y - (soloPinchMidY - soloCamY) * ratio;
+  soloPinchMidX = m.x; soloPinchMidY = m.y;
+  soloPinchStartZoom = soloCamZoom;
+  soloPinchStartDist = m.dist;
+  redrawAllStrokes();
+  updateZoomBadge();
+}
+
+function soloPinchEnd(e) {
+  soloPinching = false;
+  soloTwoFinger = e.touches.length >= 2;
+  setTimeout(() => soloZoomHint.classList.add('hidden'), 1500);
+}
+
+// ============ 单指平移（✋ 模式） ============
+soloPanBtn.addEventListener('click', () => {
+  soloIsPanMode = !soloIsPanMode;
+  soloPanBtn.classList.toggle('active', soloIsPanMode);
+  soloCanvas.style.cursor = soloIsPanMode ? 'grab' : 'crosshair';
+});
+
+function soloStartPan(e) {
+  soloPanning = true;
+  const p = getSoloPos(e);
+  soloLastPanX = p.rawX; soloLastPanY = p.rawY;
+}
+
+function soloPanMove(e) {
+  if (!soloPanning) return;
+  e.preventDefault();
+  const p = getSoloPos(e);
+  soloCamX += p.rawX - soloLastPanX;
+  soloCamY += p.rawY - soloLastPanY;
+  soloLastPanX = p.rawX; soloLastPanY = p.rawY;
+  redrawAllStrokes();
+}
+
+function soloEndPan(e) { soloPanning = false; }
+
+function updateZoomBadge() { soloZoomBadge.textContent = Math.round(soloCamZoom * 100) + '%'; }
+
+// ============ 工具栏控制器 ============
 $$('.solo-brush-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     $$('.solo-brush-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     soloBrush = btn.dataset.brush;
-    updateSoloBrushInfo();
   });
 });
 
 soloSizeSlider.addEventListener('input', () => {
   soloSize = parseInt(soloSizeSlider.value);
   soloSizeVal.textContent = soloSize;
-  updateSoloBrushInfo();
 });
 
 soloOpacitySlider.addEventListener('input', () => {
   soloOpacity = parseInt(soloOpacitySlider.value) / 100;
   soloOpacityVal.textContent = parseInt(soloOpacitySlider.value);
+});
+
+soloSmoothSlider.addEventListener('input', () => {
+  soloSmooth = parseInt(soloSmoothSlider.value) / 100;
+  soloSmoothVal.textContent = parseInt(soloSmoothSlider.value);
 });
 
 $$('.solo-color-btn').forEach(btn => {
@@ -1167,10 +1285,8 @@ soloRedoBtn.addEventListener('click', () => {
 soloClearBtn.addEventListener('click', () => {
   if (soloStrokes.length === 0) return;
   if (confirm('确定清空画布吗？此操作不可恢复。')) {
-    soloStrokes = [];
-    soloUndoStack = [];
-    initSoloCanvas();
-    updateUndoRedoBtns();
+    soloStrokes = []; soloUndoStack = [];
+    initSoloCanvas(); updateUndoRedoBtns();
   }
 });
 
@@ -1187,38 +1303,36 @@ function updateUndoRedoBtns() {
   soloRedoBtn.disabled = soloUndoStack.length === 0;
 }
 
-function updateSoloBrushInfo() {
-  const names = { pen: '钢笔', marker: '马克笔', water: '水彩', spray: '喷枪', calligraphy: '书法', eraser: '橡皮' };
-  soloBrushInfo.textContent = (names[soloBrush] || '钢笔') + ' · ' + soloSize + 'px';
-}
-
-// Canvas 事件
-soloCanvas.addEventListener('touchstart', soloStart, { passive: false });
-soloCanvas.addEventListener('touchmove', soloMove, { passive: false });
-soloCanvas.addEventListener('touchend', soloEnd);
-soloCanvas.addEventListener('mousedown', soloStart);
-soloCanvas.addEventListener('mousemove', soloMove);
-soloCanvas.addEventListener('mouseup', soloEnd);
-soloCanvas.addEventListener('mouseleave', soloEnd);
-
-// 进入/退出单人模式
+// 进入/退出
 soloModeBtn.addEventListener('click', () => {
   lobbyScreen.classList.remove('active');
   soloScreen.classList.add('active');
-  initSoloCanvas();
-  soloStrokes = [];
-  soloUndoStack = [];
-  updateUndoRedoBtns();
-  updateSoloBrushInfo();
+  soloStrokes = []; soloUndoStack = [];
+  soloCamX = 0; soloCamY = 0; soloCamZoom = 1;
+  initSoloCanvas(); updateUndoRedoBtns(); updateZoomBadge();
 });
 
 soloBackBtn.addEventListener('click', () => {
   soloScreen.classList.remove('active');
   lobbyScreen.classList.add('active');
+  soloIsPanMode = false; soloPanBtn.classList.remove('active');
 });
 
-// resize/orientationchange 已在前面注册，此处通过合并处理
-const _origResize = window.onresize;
+// 缩放画布
+soloCanvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const rect = soloCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const zoom = soloCamZoom * (e.deltaY < 0 ? 1.1 : 0.9);
+  const nz = Math.max(0.1, Math.min(5, zoom));
+  soloCamX = mx - (mx - soloCamX) * (nz / soloCamZoom);
+  soloCamY = my - (my - soloCamY) * (nz / soloCamZoom);
+  soloCamZoom = nz;
+  redrawAllStrokes();
+  updateZoomBadge();
+}, { passive: false });
+
+// resize
 window.addEventListener('resize', () => { if (soloScreen.classList.contains('active')) initSoloCanvas(); });
 window.addEventListener('orientationchange', () => { if (soloScreen.classList.contains('active')) setTimeout(initSoloCanvas, 300); });
 

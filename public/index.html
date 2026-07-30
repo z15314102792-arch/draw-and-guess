@@ -36,7 +36,7 @@
   <div id="lobby-screen" class="screen active">
     <div class="lobby-container">
       <h1 class="logo">🎨 你画我猜</h1>
-      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v2.0</span></p>
+      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v2.1</span></p>
 
       <div class="form-group">
         <label>你的昵称</label>
@@ -198,35 +198,44 @@
   <!-- ====== 单人创作模式 ====== -->
   <div id="solo-screen" class="screen">
     <div id="solo-top-bar">
-      <button id="solo-back-btn" class="icon-btn">←</button>
+      <button id="solo-back-btn" class="icon-btn" style="color:#fff">←</button>
       <span class="solo-title">🎨 单人创作</span>
-      <span class="solo-brush-info" id="solo-brush-info">钢笔 · 3px</span>
+      <button id="solo-pan-btn" class="solo-pan-btn" title="拖拽/缩放画布">✋</button>
+      <span class="solo-zoom-badge" id="solo-zoom-badge">100%</span>
     </div>
     <div id="solo-canvas-wrap">
       <canvas id="solo-canvas"></canvas>
+      <div id="solo-zoom-hint" class="solo-zoom-hint hidden">双指缩放 / 双指拖动</div>
     </div>
     <div id="solo-toolbar">
       <!-- 画笔类型 -->
       <div class="solo-row">
-        <span class="solo-label">画笔</span>
-        <div class="solo-brushes">
-          <button class="solo-brush-btn active" data-brush="pen" title="钢笔 · 平滑流畅">✒️</button>
-          <button class="solo-brush-btn" data-brush="marker" title="马克笔 · 半透明叠色">🖍️</button>
-          <button class="solo-brush-btn" data-brush="water" title="水彩 · 边缘扩散">🖌️</button>
-          <button class="solo-brush-btn" data-brush="spray" title="喷枪 · 粒子喷洒">🌫️</button>
-          <button class="solo-brush-btn" data-brush="calligraphy" title="书法 · 粗细变化">🖋️</button>
-          <button class="solo-brush-btn" data-brush="eraser" title="橡皮擦">🧹</button>
+        <div class="solo-brushes" id="solo-brushes">
+          <button class="solo-brush-btn active" data-brush="pen"><span class="brush-icon">—</span><span class="brush-label">钢笔</span></button>
+          <button class="solo-brush-btn" data-brush="pencil"><span class="brush-icon">╱</span><span class="brush-label">铅笔</span></button>
+          <button class="solo-brush-btn" data-brush="marker"><span class="brush-icon">◼</span><span class="brush-label">马克</span></button>
+          <button class="solo-brush-btn" data-brush="crayon"><span class="brush-icon">◫</span><span class="brush-label">蜡笔</span></button>
+          <button class="solo-brush-btn" data-brush="water"><span class="brush-icon">◌</span><span class="brush-label">水彩</span></button>
+          <button class="solo-brush-btn" data-brush="glow"><span class="brush-icon">◎</span><span class="brush-label">荧光</span></button>
+          <button class="solo-brush-btn" data-brush="spray"><span class="brush-icon">❇</span><span class="brush-label">喷枪</span></button>
+          <button class="solo-brush-btn" data-brush="calligraphy"><span class="brush-icon">⌣</span><span class="brush-label">书法</span></button>
+          <button class="solo-brush-btn eraser-btn" data-brush="eraser"><span class="brush-icon">⌫</span><span class="brush-label">橡皮</span></button>
         </div>
       </div>
       <!-- 粗细 -->
       <div class="solo-row">
-        <span class="solo-label">粗细 <span id="solo-size-val">3</span>px</span>
+        <span class="solo-label">粗细 <span id="solo-size-val">3</span></span>
         <input type="range" id="solo-size-slider" class="solo-slider" min="1" max="50" value="3">
       </div>
       <!-- 透明度 -->
       <div class="solo-row">
-        <span class="solo-label">透明度 <span id="solo-opacity-val">100</span>%</span>
+        <span class="solo-label">透明 <span id="solo-opacity-val">100</span>%</span>
         <input type="range" id="solo-opacity-slider" class="solo-slider" min="5" max="100" value="100">
+      </div>
+      <!-- 平滑度 -->
+      <div class="solo-row">
+        <span class="solo-label">平滑 <span id="solo-smooth-val">50</span></span>
+        <input type="range" id="solo-smooth-slider" class="solo-slider" min="0" max="100" value="50">
       </div>
       <!-- 颜色 -->
       <div class="solo-row">
