@@ -118,7 +118,12 @@ function connectSocket() {
   });
 
   // --- 错误 ---
-  socket.on('error', ({ message }) => { showToast('❌ ' + message); });
+  socket.on('error', ({ message }) => {
+    showToast('❌ ' + message);
+    // 恢复按钮
+    createRoomBtn.disabled = false; createRoomBtn.textContent = '🏠 创建房间';
+    joinRoomBtn.disabled = false; joinRoomBtn.textContent = '加入';
+  });
 
   // --- 房间创建 ---
   socket.on('room-created', ({ roomId: rid, players, serverUrl: sUrl }) => {
@@ -128,6 +133,7 @@ function connectSocket() {
     updatePlayerList(players);
     switchToGameScreen();
     updateWaitingUI(players);
+    createRoomBtn.disabled = false; createRoomBtn.textContent = '🏠 创建房间';
     addChatMessage('system', '✅ 房间创建成功！房间号：' + rid);
   });
 
@@ -144,6 +150,7 @@ function connectSocket() {
     if (gameStatus === 'waiting') {
       showWaitingMode();
       updateWaitingUI(data.players);
+      joinRoomBtn.disabled = false; joinRoomBtn.textContent = '加入';
       addChatMessage('system', '✅ 加入了房间 ' + data.roomId);
     } else {
       hideWaitingMode();
@@ -539,13 +546,18 @@ guessInput.addEventListener('keydown', (e) => {
 createRoomBtn.addEventListener('click', () => {
   const name = nicknameInput.value.trim() || '玩家';
   playerName = name;
+  // 清理旧连接
+  if (socket) { socket.removeAllListeners(); socket.close(); socket = null; }
+  createRoomBtn.disabled = true;
+  createRoomBtn.textContent = '连接中...';
   connectSocket();
-  // 先绑监听再检查，避免竞态
   if (socket.connected) {
     socket.emit('create-room', { playerName: name });
   } else {
     socket.once('connect', () => { socket.emit('create-room', { playerName: name }); });
   }
+  // 5秒超时恢复按钮
+  setTimeout(() => { createRoomBtn.disabled = false; createRoomBtn.textContent = '🏠 创建房间'; }, 5000);
 });
 
 joinRoomBtn.addEventListener('click', () => {
@@ -553,12 +565,18 @@ joinRoomBtn.addEventListener('click', () => {
   if (!code) { showToast('请输入房间号'); return; }
   const name = nicknameInput.value.trim() || '玩家';
   playerName = name;
+  // 清理旧连接
+  if (socket) { socket.removeAllListeners(); socket.close(); socket = null; }
+  joinRoomBtn.disabled = true;
+  joinRoomBtn.textContent = '连接中...';
   connectSocket();
   if (socket.connected) {
     socket.emit('join-room', { roomId: code, playerName: name });
   } else {
     socket.once('connect', () => { socket.emit('join-room', { roomId: code, playerName: name }); });
   }
+  // 5秒超时恢复按钮
+  setTimeout(() => { joinRoomBtn.disabled = false; joinRoomBtn.textContent = '加入'; }, 5000);
 });
 roomCodeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') joinRoomBtn.click(); });
 
