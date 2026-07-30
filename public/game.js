@@ -817,629 +817,121 @@ window.addEventListener('resize', resizeCanvas);
 window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 300));
 
 // ##########################################################
-// #               单人创作模式 v2 (Solo Mode)                #
+// #               单人创作模式 v3 (Solo Mode)                #
 // ##########################################################
 
-// DOM 引用
-const soloScreen = $('#solo-screen');
-const soloModeBtn = $('#solo-mode-btn');
-const soloBackBtn = $('#solo-back-btn');
-const soloCanvas = $('#solo-canvas');
-const soloCtx = soloCanvas.getContext('2d');
-const soloSizeSlider = $('#solo-size-slider');
-const soloSizeVal = $('#solo-size-val');
-const soloOpacitySlider = $('#solo-opacity-slider');
-const soloOpacityVal = $('#solo-opacity-val');
-const soloSmoothSlider = $('#solo-smooth-slider');
-const soloSmoothVal = $('#solo-smooth-val');
-const soloImmerseBtn = $('#solo-immerse-btn');
-const soloExitImmerse = $('#solo-exit-immerse');
-const soloToggleToolbar = $('#solo-toggle-toolbar');
-const soloUndoBtn = $('#solo-undo-btn');
-const soloRedoBtn = $('#solo-redo-btn');
-const soloClearBtn = $('#solo-clear-btn');
-const soloSaveBtn = $('#solo-save-btn');
-const soloCustomColor = $('#solo-custom-color');
-const soloPanBtn = $('#solo-pan-btn');
-const soloZoomBadge = $('#solo-zoom-badge');
-const soloZoomHint = $('#solo-zoom-hint');
+const soloScreen=$('#solo-screen'),soloModeBtn=$('#solo-mode-btn'),soloBackBtn=$('#solo-back-btn');
+const soloCanvas=$('#solo-canvas'),soloCtx=soloCanvas.getContext('2d');
+const soloSizeSlider=$('#solo-size-slider'),soloSizeVal=$('#solo-size-val');
+const soloOpacitySlider=$('#solo-opacity-slider'),soloOpacityVal=$('#solo-opacity-val');
+const soloSmoothSlider=$('#solo-smooth-slider'),soloSmoothVal=$('#solo-smooth-val');
+const soloUndoBtn=$('#solo-undo-btn'),soloRedoBtn=$('#solo-redo-btn');
+const soloClearBtn=$('#solo-clear-btn'),soloSaveBtn=$('#solo-save-btn');
+const soloCustomColor=$('#solo-custom-color'),soloPanBtn=$('#solo-pan-btn');
+const soloZoomBadge=$('#solo-zoom-badge'),soloZoomHint=$('#solo-zoom-hint');
+function el(id){return document.querySelector(id);}
 
-// 状态
-let soloBrush = 'pen';
-let soloColor = '#000000';
-let soloSize = 3;
-let soloOpacity = 1;
-let soloHardness = 0.5; // 0=硬边, 1=柔和
-let soloImmersed = false;
-let soloImmersedTimeout = null;
-let soloToolbarCollapsed = false;
-let soloDrawing = false;
-let soloLastPos = null;
-let soloStrokes = [];
-let soloUndoStack = [];
-let soloPoints = [];
+let soloBrush='pen',soloColor='#000000',soloSize=3,soloOpacity=1,soloHardness=0.5;
+let soloImmersed=false,soloImmersedTimeout=null,soloToolbarCollapsed=false;
+let soloDrawing=false,soloLastPos=null,soloStrokes=[],soloUndoStack=[],soloPoints=[];
+let soloCamX=0,soloCamY=0,soloCamZoom=1,soloTwoFinger=false;
+let soloPinching=false,soloPinchStartDist=0,soloPinchStartZoom=1,soloPinchMidX=0,soloPinchMidY=0;
+let soloPanning=false,soloLastPanX=0,soloLastPanY=0,soloIsPanMode=false;
+let brushTipCache=null,brushTipCacheKey='';
 
-// 无限画布：摄像头状态
-let soloCamX = 0, soloCamY = 0, soloCamZoom = 1;
-let soloPanning = false;
-let soloPinching = false;
-let soloPinchStartDist = 0;
-let soloPinchStartZoom = 1;
-let soloPinchMidX = 0, soloPinchMidY = 0;
-let soloLastPanX = 0, soloLastPanY = 0;
-let soloIsPanMode = false;  // ✋ 拖拽模式
-let soloTwoFinger = false;
+function getBrushTip(color,size,hardness,brush){
+  if(brush==='eraser'||brush==='spray'||brush==='calligraphy'||brush==='pencil'||brush==='crayon')return null;
+  var key=color+'-'+size+'-'+hardness.toFixed(2)+'-'+brush;
+  if(brushTipCache&&brushTipCacheKey===key)return brushTipCache;
+  var s=Math.ceil(size*2)+4,c=document.createElement('canvas');c.width=s;c.height=s;
+  var cx=c.getContext('2d'),outerR=s/2,innerR=outerR*(1-hardness);
+  var grad=cx.createRadialGradient(s/2,s/2,innerR,s/2,s/2,outerR);
+  grad.addColorStop(0,color);grad.addColorStop(1,'rgba(0,0,0,0)');
+  cx.fillStyle=grad;cx.beginPath();cx.arc(s/2,s/2,outerR,0,Math.PI*2);cx.fill();
+  brushTipCache=c;brushTipCacheKey=key;return c;
+}
+function stampBrushTip(ctx,x,y,size,tip){if(!tip)return;var s=tip.width;ctx.drawImage(tip,x-s/2,y-s/2,s,s);}
 
-// ============ 初始化 ============
-function initSoloCanvas() {
-  const wrap = $('#solo-canvas-wrap');
-  const maxW = wrap.clientWidth - 8;
-  const maxH = wrap.clientHeight - 8;
-  const w = Math.min(maxW, 1200);
-  const h = Math.min(maxH, 900);
-  const dpr = window.devicePixelRatio || 1;
-  soloCanvas.style.width = w + 'px';
-  soloCanvas.style.height = h + 'px';
-  soloCanvas.width = w * dpr;
-  soloCanvas.height = h * dpr;
-  soloCtx.setTransform(1, 0, 0, 1, 0, 0);
-  soloCtx.scale(dpr, dpr);
+function initSoloCanvas(){
+  var wrap=el('#solo-canvas-wrap'),w=wrap.clientWidth,h=wrap.clientHeight;
+  var dpr=window.devicePixelRatio||1;
+  soloCanvas.style.width=w+'px';soloCanvas.style.height=h+'px';
+  soloCanvas.width=w*dpr;soloCanvas.height=h*dpr;
   redrawAllStrokes();
 }
-
-function applyCameraTransform() {
-  const dpr = window.devicePixelRatio || 1;
-  soloCtx.setTransform(1, 0, 0, 1, 0, 0);
-  soloCtx.scale(dpr, dpr);
-  soloCtx.translate(soloCamX, soloCamY);
-  soloCtx.scale(soloCamZoom, soloCamZoom);
+function redrawAllStrokes(){
+  var w=parseFloat(soloCanvas.style.width),h=parseFloat(soloCanvas.style.height);
+  var dpr=window.devicePixelRatio||1;
+  soloCtx.setTransform(dpr,0,0,dpr,0,0);
+  soloCtx.clearRect(0,0,w,h);soloCtx.fillStyle='#FFFFFF';soloCtx.fillRect(0,0,w,h);
+  soloCtx.translate(soloCamX,soloCamY);soloCtx.scale(soloCamZoom,soloCamZoom);
+  for(var i=0;i<soloStrokes.length;i++)renderStroke(soloStrokes[i]);
 }
-
-function redrawAllStrokes() {
-  const w = parseFloat(soloCanvas.style.width);
-  const h = parseFloat(soloCanvas.style.height);
-  const dpr = window.devicePixelRatio || 1;
-  soloCtx.setTransform(1, 0, 0, 1, 0, 0);
-  soloCtx.scale(dpr, dpr);
-  soloCtx.clearRect(0, 0, w, h);
-  soloCtx.fillStyle = '#FFFFFF';
-  soloCtx.fillRect(0, 0, w, h);
-  applyCameraTransform();
-  for (const stroke of soloStrokes) {
-    renderStroke(stroke);
+function renderStroke(stroke){
+  var ctx=soloCtx,pts=stroke.points;if(pts.length<2)return;
+  ctx.save();ctx.lineCap='round';ctx.lineJoin='round';ctx.globalAlpha=stroke.opacity;
+  if(stroke.brush==='eraser'){
+    ctx.globalCompositeOperation='destination-out';ctx.lineWidth=stroke.size*2;ctx.strokeStyle='rgba(0,0,0,1)';
+    for(var i=1;i<pts.length;i++){ctx.beginPath();ctx.moveTo(pts[i-1].x,pts[i-1].y);ctx.lineTo(pts[i].x,pts[i].y);ctx.stroke();}
+    ctx.restore();return;
   }
-}
-
-// 预渲染画笔笔尖（径向渐变，缓存）
-let brushTipCache = null;
-let brushTipCacheKey = '';
-
-function getBrushTip(color, size, hardness, brush) {
-  if (brush === 'eraser' || brush === 'spray' || brush === 'calligraphy' || brush === 'pencil' || brush === 'crayon') return null;
-  const key = color + '-' + size + '-' + hardness.toFixed(2) + '-' + brush;
-  if (brushTipCache && brushTipCacheKey === key) return brushTipCache;
-  const s = Math.ceil(size * 2) + 4;
-  const c = document.createElement('canvas');
-  c.width = s; c.height = s;
-  const cx = c.getContext('2d');
-  const outerR = s / 2;
-  const innerR = outerR * (1 - hardness);
-  const grad = cx.createRadialGradient(s/2, s/2, innerR, s/2, s/2, outerR);
-  grad.addColorStop(0, color);
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
-  cx.fillStyle = grad;
-  cx.beginPath(); cx.arc(s/2, s/2, outerR, 0, Math.PI*2); cx.fill();
-  brushTipCache = c; brushTipCacheKey = key;
-  return c;
-}
-
-function stampBrushTip(ctx, x, y, size, tip) {
-  if (!tip) return;
-  const s = tip.width;
-  ctx.drawImage(tip, x - s/2, y - s/2, s, s);
-}
-
-function renderStroke(stroke) {
-  const ctx = soloCtx;
-  const pts = stroke.points;
-  if (pts.length < 2) return;
-  ctx.save();
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.globalAlpha = stroke.opacity;
-
-  if (stroke.brush === 'eraser') {
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.lineWidth = stroke.size * 2;
-    ctx.strokeStyle = 'rgba(0,0,0,1)';
-    for (let i = 1; i < pts.length; i++) { ctx.beginPath(); ctx.moveTo(pts[i-1].x, pts[i-1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke(); }
-    ctx.restore(); return;
-  }
-
-  ctx.globalCompositeOperation = (stroke.brush === 'marker' || stroke.brush === 'crayon') ? 'multiply' : 'source-over';
-  if (stroke.brush === 'glow') {
-    ctx.shadowBlur = stroke.size * 2; ctx.shadowColor = stroke.color;
-  }
-
-  const hardness = stroke.hardness !== undefined ? stroke.hardness : 0.5;
-  const tip = (stroke.brush === 'pen' || stroke.brush === 'marker' || stroke.brush === 'glow')
-    ? getBrushTip(stroke.color, stroke.size, hardness, stroke.brush) : null;
-
-  if (stroke.brush === 'spray') {
-    for (const p of pts) {
-      const n = Math.floor(stroke.size * 2);
-      for (let j = 0; j < n; j++) {
-        const a = Math.random() * Math.PI * 2, d = Math.random() * stroke.size * 2;
-        ctx.globalAlpha = stroke.opacity * Math.random() * 0.25;
-        ctx.fillStyle = stroke.color;
-        ctx.beginPath(); ctx.arc(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 0.5 + Math.random(), 0, Math.PI * 2); ctx.fill();
-      }
-    }
-    ctx.restore(); return;
-  }
-
-  if (stroke.brush === 'water') {
-    for (let l = 0; l < 3; l++) {
-      ctx.globalAlpha = stroke.opacity * 0.12;
-      ctx.lineWidth = stroke.size + (l * stroke.size * 0.8);
-      ctx.strokeStyle = stroke.color;
-      for (let i = 1; i < pts.length; i++) { ctx.beginPath(); ctx.moveTo(pts[i-1].x, pts[i-1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke(); }
-    }
-    ctx.restore(); return;
-  }
-
-  if (stroke.brush === 'pencil') {
-    ctx.lineWidth = stroke.size * 0.7;
-    ctx.strokeStyle = stroke.color;
-    ctx.globalAlpha = stroke.opacity * 0.85;
-    for (let i = 1; i < pts.length; i++) {
-      const dx = pts[i].x - pts[i-1].x, dy = pts[i].y - pts[i-1].y;
-      const wobble = stroke.size * 0.15;
-      const ox = (Math.random() - 0.5) * wobble, oy = (Math.random() - 0.5) * wobble;
-      ctx.beginPath(); ctx.moveTo(pts[i-1].x + ox, pts[i-1].y + oy);
-      ctx.lineTo(pts[i].x + ox, pts[i].y + oy); ctx.stroke();
-    }
-    ctx.restore(); return;
-  }
-
-  if (stroke.brush === 'crayon') {
-    ctx.lineWidth = stroke.size * 1.2;
-    ctx.strokeStyle = stroke.color;
-    ctx.globalAlpha = stroke.opacity * 0.7;
-    for (let pass = 0; pass < 2; pass++) {
-      for (let i = 1; i < pts.length; i++) {
-        const wobble = stroke.size * 0.3;
-        ctx.beginPath(); ctx.moveTo(pts[i-1].x + (Math.random()-0.5)*wobble, pts[i-1].y + (Math.random()-0.5)*wobble);
-        ctx.lineTo(pts[i].x + (Math.random()-0.5)*wobble, pts[i].y + (Math.random()-0.5)*wobble); ctx.stroke();
-      }
-    }
-    ctx.restore(); return;
-  }
-
-  if (stroke.brush === 'calligraphy') {
-    for (let i = 1; i < pts.length; i++) {
-      const p0 = pts[i-1], p1 = pts[i];
-      const dx = p1.x - p0.x, dy = p1.y - p0.y;
-      const speed = Math.sqrt(dx*dx+dy*dy);
-      const w = stroke.size * (1 + 1/(1+speed*0.3));
-      const h = stroke.size * (1/(1+speed*0.1));
-      const angle = Math.atan2(dy, dx);
-      ctx.save(); ctx.translate(p0.x, p0.y); ctx.rotate(angle);
-      ctx.beginPath(); ctx.ellipse(0, 0, w/2, h/2, 0, 0, Math.PI*2);
-      ctx.fillStyle = stroke.color; ctx.fill(); ctx.restore();
-    }
-    ctx.restore(); return;
-  }
-
-  // pen / marker / glow: 笔尖图章 + 贝塞尔插值
-  ctx.lineWidth = stroke.size;
-  ctx.strokeStyle = stroke.color;
-  if (tip) {
-    // 沿线图章式绘制
-    for (let i = 0; i < pts.length; i++) {
-      stampBrushTip(ctx, pts[i].x, pts[i].y, stroke.size, tip);
-    }
-    // 填充点间空隙
-    for (let i = 1; i < pts.length; i++) {
-      const dx = pts[i].x - pts[i-1].x, dy = pts[i].y - pts[i-1].y;
-      const dist = Math.sqrt(dx*dx+dy*dy);
-      const steps = Math.ceil(dist / (stroke.size * 0.3));
-      for (let s = 1; s < steps; s++) {
-        const t = s / steps;
-        stampBrushTip(ctx, pts[i-1].x + dx*t, pts[i-1].y + dy*t, stroke.size, tip);
-      }
-    }
-  } else {
-    // 无笔尖的简单线条
-    for (let i = 1; i < pts.length; i++) {
-      ctx.beginPath(); ctx.moveTo(pts[i-1].x, pts[i-1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
-    }
-  }
+  ctx.globalCompositeOperation=(stroke.brush==='marker'||stroke.brush==='crayon')?'multiply':'source-over';
+  if(stroke.brush==='glow'){ctx.shadowBlur=stroke.size*2;ctx.shadowColor=stroke.color;}
+  var hardness=stroke.hardness!==undefined?stroke.hardness:0.5;
+  var tip=(stroke.brush==='pen'||stroke.brush==='marker'||stroke.brush==='glow')?getBrushTip(stroke.color,stroke.size,hardness,stroke.brush):null;
+  if(stroke.brush==='spray'){for(var i=0;i<pts.length;i++){var p=pts[i],n=Math.floor(stroke.size*2);for(var j=0;j<n;j++){var a=Math.random()*Math.PI*2,d=Math.random()*stroke.size*2;ctx.globalAlpha=stroke.opacity*Math.random()*0.25;ctx.fillStyle=stroke.color;ctx.beginPath();ctx.arc(p.x+Math.cos(a)*d,p.y+Math.sin(a)*d,0.5+Math.random(),0,Math.PI*2);ctx.fill();}}ctx.restore();return;}
+  if(stroke.brush==='water'){for(var l=0;l<3;l++){ctx.globalAlpha=stroke.opacity*0.12;ctx.lineWidth=stroke.size+l*stroke.size*0.8;ctx.strokeStyle=stroke.color;for(var i=1;i<pts.length;i++){ctx.beginPath();ctx.moveTo(pts[i-1].x,pts[i-1].y);ctx.lineTo(pts[i].x,pts[i].y);ctx.stroke();}}ctx.restore();return;}
+  if(stroke.brush==='pencil'){ctx.lineWidth=stroke.size*0.7;ctx.strokeStyle=stroke.color;ctx.globalAlpha=stroke.opacity*0.85;for(var i=1;i<pts.length;i++){var wb=stroke.size*0.15;ctx.beginPath();ctx.moveTo(pts[i-1].x+(Math.random()-0.5)*wb,pts[i-1].y+(Math.random()-0.5)*wb);ctx.lineTo(pts[i].x+(Math.random()-0.5)*wb,pts[i].y+(Math.random()-0.5)*wb);ctx.stroke();}ctx.restore();return;}
+  if(stroke.brush==='crayon'){ctx.lineWidth=stroke.size*1.2;ctx.strokeStyle=stroke.color;ctx.globalAlpha=stroke.opacity*0.7;for(var p=0;p<2;p++)for(var i=1;i<pts.length;i++){var wb=stroke.size*0.3;ctx.beginPath();ctx.moveTo(pts[i-1].x+(Math.random()-0.5)*wb,pts[i-1].y+(Math.random()-0.5)*wb);ctx.lineTo(pts[i].x+(Math.random()-0.5)*wb,pts[i].y+(Math.random()-0.5)*wb);ctx.stroke();}ctx.restore();return;}
+  if(stroke.brush==='calligraphy'){for(var i=1;i<pts.length;i++){var p0=pts[i-1],p1=pts[i],dx=p1.x-p0.x,dy=p1.y-p0.y,speed=Math.sqrt(dx*dx+dy*dy),w=stroke.size*(1+1/(1+speed*0.3)),h=stroke.size*(1/(1+speed*0.1));ctx.save();ctx.translate(p0.x,p0.y);ctx.rotate(Math.atan2(dy,dx));ctx.beginPath();ctx.ellipse(0,0,w/2,h/2,0,0,Math.PI*2);ctx.fillStyle=stroke.color;ctx.fill();ctx.restore();}ctx.restore();return;}
+  ctx.lineWidth=stroke.size;ctx.strokeStyle=stroke.color;
+  if(tip){for(var i=0;i<pts.length;i++)stampBrushTip(ctx,pts[i].x,pts[i].y,stroke.size,tip);for(var i=1;i<pts.length;i++){var dx=pts[i].x-pts[i-1].x,dy=pts[i].y-pts[i-1].y,dist=Math.sqrt(dx*dx+dy*dy);for(var s=1;s<Math.ceil(dist/(stroke.size*0.3));s++){var t=s/Math.ceil(dist/(stroke.size*0.3));stampBrushTip(ctx,pts[i-1].x+dx*t,pts[i-1].y+dy*t,stroke.size,tip);}}}
+  else{for(var i=1;i<pts.length;i++){ctx.beginPath();ctx.moveTo(pts[i-1].x,pts[i-1].y);ctx.lineTo(pts[i].x,pts[i].y);ctx.stroke();}}
   ctx.restore();
 }
+function getSoloPos(e){var rect=soloCanvas.getBoundingClientRect(),cx=e.touches?e.touches[0].clientX:e.clientX,cy=e.touches?e.touches[0].clientY:e.clientY,sx=cx-rect.left,sy=cy-rect.top;return{x:(sx-soloCamX)/soloCamZoom,y:(sy-soloCamY)/soloCamZoom,rawX:sx,rawY:sy};}
+function getTwoFingerMid(e){var r=soloCanvas.getBoundingClientRect(),x1=e.touches[0].clientX-r.left,y1=e.touches[0].clientY-r.top,x2=e.touches[1].clientX-r.left,y2=e.touches[1].clientY-r.top;return{x:(x1+x2)/2,y:(y1+y2)/2,dist:Math.hypot(x2-x1,y2-y1)};}
+function soloStart(e){if(soloTwoFinger||soloPinching)return;if(soloIsPanMode){soloPanning=true;var p=getSoloPos(e);soloLastPanX=p.rawX;soloLastPanY=p.rawY;return;}e.preventDefault();soloDrawing=true;soloLastPos=getSoloPos(e);soloPoints=[soloLastPos];}
+function soloMove(e){if(soloPinching)return soloPinchMove(e);if(soloPanning){e.preventDefault();var p=getSoloPos(e);soloCamX+=p.rawX-soloLastPanX;soloCamY+=p.rawY-soloLastPanY;soloLastPanX=p.rawX;soloLastPanY=p.rawY;redrawAllStrokes();return;}if(!soloDrawing)return;e.preventDefault();var pt=getSoloPos(e);if(Math.abs(pt.x-soloLastPos.x)<0.5&&Math.abs(pt.y-soloLastPos.y)<0.5)return;soloPoints.push(pt);soloCtx.setTransform(1,0,0,1,0,0);soloCtx.scale(window.devicePixelRatio||1,window.devicePixelRatio||1);soloCtx.translate(soloCamX,soloCamY);soloCtx.scale(soloCamZoom,soloCamZoom);drawLiveSegment(soloLastPos,pt);soloLastPos=pt;}
+function soloEnd(e){if(soloPinching){soloPinching=false;soloTwoFinger=e.touches?e.touches.length>=2:false;setTimeout(function(){soloZoomHint.classList.add('hidden');},1500);return;}if(soloPanning){soloPanning=false;return;}if(!soloDrawing)return;e.preventDefault();soloDrawing=false;if(soloPoints.length>=1){var pts=soloPoints.length>1?soloPoints.slice():[soloPoints[0],Object.assign({},soloPoints[0])];soloUndoStack=[];soloStrokes.push({brush:soloBrush,color:soloColor,size:soloSize,opacity:soloOpacity,hardness:soloHardness,points:pts});updateUndoRedoBtns();}soloPoints=[];}
+function drawLiveSegment(from,to){var ctx=soloCtx;ctx.save();ctx.lineCap='round';ctx.lineJoin='round';ctx.globalAlpha=soloOpacity;if(soloBrush==='eraser'){ctx.globalCompositeOperation='destination-out';ctx.lineWidth=soloSize*2;ctx.strokeStyle='rgba(0,0,0,1)';ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(to.x,to.y);ctx.stroke();ctx.restore();return;}if(soloBrush==='glow'){ctx.shadowBlur=soloSize*2;ctx.shadowColor=soloColor;}ctx.globalCompositeOperation=(soloBrush==='marker'||soloBrush==='crayon')?'multiply':'source-over';if(soloBrush==='spray'||soloBrush==='water'||soloBrush==='pencil'||soloBrush==='crayon'||soloBrush==='calligraphy'){ctx.lineWidth=soloSize;ctx.strokeStyle=soloColor;ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(to.x,to.y);ctx.stroke();ctx.restore();return;}var tip=(soloBrush==='pen'||soloBrush==='marker'||soloBrush==='glow')?getBrushTip(soloColor,soloSize,soloHardness,soloBrush):null;if(tip){stampBrushTip(ctx,to.x,to.y,soloSize,tip);var dx=to.x-from.x,dy=to.y-from.y,dist=Math.sqrt(dx*dx+dy*dy);for(var s=0;s<Math.ceil(dist/(soloSize*0.3));s++){var t=s/Math.ceil(dist/(soloSize*0.3));stampBrushTip(ctx,from.x+dx*t,from.y+dy*t,soloSize,tip);}}else{ctx.lineWidth=soloSize;ctx.strokeStyle=soloColor;ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(to.x,to.y);ctx.stroke();}ctx.restore();}
+function soloPinchMove(e){var m=getTwoFingerMid(e),nz=soloPinchStartZoom*(m.dist/soloPinchStartDist);soloCamZoom=Math.max(0.01,Math.min(5,nz));var r=soloCamZoom/soloPinchStartZoom;soloCamX=m.x-(soloPinchMidX-soloCamX)*r;soloCamY=m.y-(soloPinchMidY-soloCamY)*r;soloPinchMidX=m.x;soloPinchMidY=m.y;soloPinchStartZoom=soloCamZoom;soloPinchStartDist=m.dist;redrawAllStrokes();updateZoomBadge();}
 
-// ============ 坐标转换（屏幕 → 画布） ============
-function getSoloPos(e) {
-  const rect = soloCanvas.getBoundingClientRect();
-  const cx = e.touches ? e.touches[0].clientX : e.clientX;
-  const cy = e.touches ? e.touches[0].clientY : e.clientY;
-  const sx = cx - rect.left, sy = cy - rect.top;
-  // 屏幕坐标 → 画布世界坐标
-  const w = parseFloat(soloCanvas.style.width), h = parseFloat(soloCanvas.style.height);
-  return {
-    x: (sx - soloCamX) / soloCamZoom,
-    y: (sy - soloCamY) / soloCamZoom,
-    rawX: sx, rawY: sy,
-  };
-}
+// event bindings
+soloCanvas.addEventListener('touchstart',function(e){if(e.touches.length===2){e.preventDefault();soloPinching=true;soloTwoFinger=true;soloDrawing=false;var m=getTwoFingerMid(e);soloPinchStartDist=m.dist;soloPinchStartZoom=soloCamZoom;soloPinchMidX=m.x;soloPinchMidY=m.y;soloZoomHint.classList.remove('hidden');}else if(e.touches.length===1&&!soloPinching){soloTwoFinger=false;soloStart(e);}},{passive:false});
+soloCanvas.addEventListener('touchmove',function(e){if(e.touches.length===2&&soloPinching){e.preventDefault();soloPinchMove(e);}else if(soloPanning)soloMove(e);else if(!soloPinching)soloMove(e);},{passive:false});
+soloCanvas.addEventListener('touchend',soloEnd);
+soloCanvas.addEventListener('mousedown',soloStart);soloCanvas.addEventListener('mousemove',soloMove);
+soloCanvas.addEventListener('mouseup',soloEnd);soloCanvas.addEventListener('mouseleave',function(e){if(soloDrawing)soloEnd(e);});
+soloCanvas.addEventListener('wheel',function(e){e.preventDefault();var rect=soloCanvas.getBoundingClientRect(),mx=e.clientX-rect.left,my=e.clientY-rect.top,nz=Math.max(0.01,Math.min(5,soloCamZoom*(e.deltaY<0?1.1:0.9)));soloCamX=mx-(mx-soloCamX)*(nz/soloCamZoom);soloCamY=my-(my-soloCamY)*(nz/soloCamZoom);soloCamZoom=nz;redrawAllStrokes();updateZoomBadge();},{passive:false});
+function updateZoomBadge(){soloZoomBadge.textContent=Math.round(soloCamZoom*100)+'%';}
 
-function getTwoFingerMid(e) {
-  const r = soloCanvas.getBoundingClientRect();
-  const x1 = e.touches[0].clientX - r.left, y1 = e.touches[0].clientY - r.top;
-  const x2 = e.touches[1].clientX - r.left, y2 = e.touches[1].clientY - r.top;
-  return { x: (x1+x2)/2, y: (y1+y2)/2, dist: Math.hypot(x2-x1, y2-y1) };
-}
+// brush selector
+el('#solo-brushes').addEventListener('click',function(e){var btn=e.target.closest('.solo-brush-btn');if(!btn)return;el('#solo-brushes').querySelectorAll('.solo-brush-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');soloBrush=btn.dataset.brush;});
+soloPanBtn.addEventListener('click',function(){soloIsPanMode=!soloIsPanMode;soloPanBtn.classList.toggle('active',soloIsPanMode);soloCanvas.style.cursor=soloIsPanMode?'grab':'crosshair';});
+soloSizeSlider.addEventListener('input',function(){soloSize=+soloSizeSlider.value;soloSizeVal.textContent=soloSize;});
+soloOpacitySlider.addEventListener('input',function(){soloOpacity=+soloOpacitySlider.value/100;soloOpacityVal.textContent=soloOpacitySlider.value;});
+soloSmoothSlider.addEventListener('input',function(){soloHardness=1-+soloSmoothSlider.value/100;soloSmoothVal.textContent=soloSmoothSlider.value;brushTipCache=null;});
+el('#solo-colors-wrap').addEventListener('click',function(e){var btn=e.target.closest('.solo-color-btn');if(!btn)return;document.querySelectorAll('.solo-color-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');soloColor=btn.dataset.color;soloCustomColor.value=soloColor;brushTipCache=null;});
+soloCustomColor.addEventListener('input',function(){soloColor=soloCustomColor.value;document.querySelectorAll('.solo-color-btn').forEach(function(b){b.classList.remove('active');});brushTipCache=null;});
+soloUndoBtn.addEventListener('click',function(){if(!soloStrokes.length)return;soloUndoStack.push(soloStrokes.pop());redrawAllStrokes();updateUndoRedoBtns();});
+soloRedoBtn.addEventListener('click',function(){if(!soloUndoStack.length)return;soloStrokes.push(soloUndoStack.pop());redrawAllStrokes();updateUndoRedoBtns();});
+soloClearBtn.addEventListener('click',function(){if(!soloStrokes.length)return;if(confirm('确定清空画布吗？')){soloStrokes=[];soloUndoStack=[];redrawAllStrokes();updateUndoRedoBtns();}});
+soloSaveBtn.addEventListener('click',function(){var a=document.createElement('a');a.download='画作_'+new Date().toISOString().slice(0,10)+'.png';a.href=soloCanvas.toDataURL('image/png');a.click();showToast('已保存');});
+function updateUndoRedoBtns(){soloUndoBtn.disabled=!soloStrokes.length;soloRedoBtn.disabled=!soloUndoStack.length;}
 
-// ============ 绘画事件 ============
-function soloStart(e) {
-  if (soloTwoFinger || soloPinching) return;
-  if (soloIsPanMode) { soloStartPan(e); return; }
-  e.preventDefault();
-  soloDrawing = true;
-  const pt = getSoloPos(e);
-  soloLastPos = pt;
-  soloPoints = [pt];
-  // 不画点！修复黑点 bug — 只在 move 时画线
-}
+// collapse toolbar
+el('#solo-toggle-toolbar').addEventListener('click',function(){soloToolbarCollapsed=!soloToolbarCollapsed;var tb=el('#solo-toolbar');tb.classList.toggle('collapsed',soloToolbarCollapsed);el('#solo-toggle-toolbar').textContent=soloToolbarCollapsed?'▲':'▼';});
 
-function soloMove(e) {
-  if (soloPinching) { soloPinchMove(e); return; }
-  if (soloPanning) { soloPanMove(e); return; }
-  if (!soloDrawing) return;
-  e.preventDefault();
-  const pt = getSoloPos(e);
-  const dx = pt.x - soloLastPos.x, dy = pt.y - soloLastPos.y;
-  if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
-  soloPoints.push(pt);
-  applyCameraTransform();
-  drawLiveSegment(soloLastPos, pt);
-  soloLastPos = pt;
-}
+// immersive mode
+el('#solo-immerse-btn').addEventListener('click',function(){soloImmersed=true;el('#solo-top-bar').classList.add('immersed');el('#solo-toolbar').classList.add('immersed');el('#solo-exit-immerse').classList.remove('hidden');});
+el('#solo-exit-immerse').addEventListener('click',function(){soloImmersed=false;el('#solo-top-bar').classList.remove('immersed');el('#solo-toolbar').classList.remove('immersed');el('#solo-exit-immerse').classList.add('hidden');});
+soloCanvas.addEventListener('click',function(e){if(!soloImmersed)return;el('#solo-top-bar').classList.remove('immersed');el('#solo-toolbar').classList.remove('immersed');el('#solo-exit-immerse').classList.remove('hidden');clearTimeout(soloImmersedTimeout);soloImmersedTimeout=setTimeout(function(){if(soloImmersed){el('#solo-top-bar').classList.add('immersed');el('#solo-toolbar').classList.add('immersed');}},2000);});
 
-function soloEnd(e) {
-  if (soloPinching) { soloPinchEnd(e); return; }
-  if (soloPanning) { soloEndPan(e); return; }
-  if (!soloDrawing) return;
-  e.preventDefault();
-  soloDrawing = false;
-  soloLastPos = null;
-  if (soloPoints.length > 1) {
-    soloUndoStack = [];
-    soloStrokes.push({
-      brush: soloBrush, color: soloColor, size: soloSize,
-      opacity: soloOpacity, hardness: soloHardness, points: [...soloPoints],
-    });
-    updateUndoRedoBtns();
-  } else if (soloPoints.length === 1) {
-    // 单击画点
-    applyCameraTransform();
-    soloCtx.fillStyle = soloBrush === 'eraser' ? '#FFFFFF' : soloColor;
-    soloCtx.globalAlpha = soloOpacity;
-    soloCtx.beginPath();
-    soloCtx.arc(soloPoints[0].x, soloPoints[0].y, soloSize/2, 0, Math.PI*2);
-    soloCtx.fill();
-    soloUndoStack = [];
-    soloStrokes.push({
-      brush: soloBrush, color: soloColor, size: soloSize,
-      opacity: soloOpacity, hardness: soloHardness, points: [...soloPoints, {...soloPoints[0]}],
-    });
-    updateUndoRedoBtns();
-  }
-  soloPoints = [];
-}
-
-function drawLiveSegment(from, to) {
-  const ctx = soloCtx; ctx.save();
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.globalAlpha = soloOpacity;
-
-  if (soloBrush === 'eraser') {
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.lineWidth = soloSize * 2; ctx.strokeStyle = 'rgba(0,0,0,1)';
-    ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
-    ctx.restore(); return;
-  }
-  if (soloBrush === 'glow') { ctx.shadowBlur = soloSize * 2; ctx.shadowColor = soloColor; }
-  ctx.globalCompositeOperation = (soloBrush === 'marker' || soloBrush === 'crayon') ? 'multiply' : 'source-over';
-
-  if (soloBrush === 'spray') {
-    const n = Math.floor(soloSize * 2);
-    for (let j = 0; j < n; j++) {
-      const a = Math.random()*Math.PI*2, d = Math.random()*soloSize*2;
-      ctx.globalAlpha = soloOpacity * Math.random() * 0.25;
-      ctx.fillStyle = soloColor;
-      ctx.beginPath(); ctx.arc(to.x+Math.cos(a)*d, to.y+Math.sin(a)*d, 0.5+Math.random(), 0, Math.PI*2); ctx.fill();
-    }
-    ctx.restore(); return;
-  }
-  if (soloBrush === 'water') {
-    for (let l = 0; l < 3; l++) {
-      ctx.globalAlpha = soloOpacity * 0.12; ctx.lineWidth = soloSize + (l*soloSize*0.8);
-      ctx.strokeStyle = soloColor;
-      ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
-    }
-    ctx.restore(); return;
-  }
-  if (soloBrush === 'pencil') {
-    ctx.lineWidth = soloSize * 0.7; ctx.strokeStyle = soloColor;
-    ctx.globalAlpha = soloOpacity * 0.85;
-    const wb = soloSize * 0.15, ox = (Math.random()-0.5)*wb, oy = (Math.random()-0.5)*wb;
-    ctx.beginPath(); ctx.moveTo(from.x+ox, from.y+oy); ctx.lineTo(to.x+ox, to.y+oy); ctx.stroke();
-    ctx.restore(); return;
-  }
-  if (soloBrush === 'crayon') {
-    ctx.lineWidth = soloSize * 1.2; ctx.strokeStyle = soloColor;
-    ctx.globalAlpha = soloOpacity * 0.7;
-    for (let p = 0; p < 2; p++) {
-      const wb = soloSize * 0.3;
-      ctx.beginPath(); ctx.moveTo(from.x+(Math.random()-0.5)*wb, from.y+(Math.random()-0.5)*wb);
-      ctx.lineTo(to.x+(Math.random()-0.5)*wb, to.y+(Math.random()-0.5)*wb); ctx.stroke();
-    }
-    ctx.restore(); return;
-  }
-  if (soloBrush === 'calligraphy') {
-    const dx = to.x-from.x, dy = to.y-from.y, speed = Math.sqrt(dx*dx+dy*dy);
-    const w = soloSize*(1+1/(1+speed*0.3)), h = soloSize*(1/(1+speed*0.1));
-    ctx.save(); ctx.translate(from.x, from.y); ctx.rotate(Math.atan2(dy, dx));
-    ctx.beginPath(); ctx.ellipse(0, 0, w/2, h/2, 0, 0, Math.PI*2);
-    ctx.fillStyle = soloColor; ctx.fill(); ctx.restore(); ctx.restore(); return;
-  }
-  // 默认：笔尖图章
-  const tip = (soloBrush === 'pen' || soloBrush === 'marker' || soloBrush === 'glow')
-    ? getBrushTip(soloColor, soloSize, soloHardness, soloBrush) : null;
-  if (tip) {
-    stampBrushTip(ctx, to.x, to.y, soloSize, tip);
-    const dx = to.x - from.x, dy = to.y - from.y;
-    const dist = Math.sqrt(dx*dx+dy*dy);
-    const steps = Math.ceil(dist / (soloSize * 0.3));
-    for (let s = 0; s < steps; s++) {
-      const t = s / steps;
-      stampBrushTip(ctx, from.x + dx*t, from.y + dy*t, soloSize, tip);
-    }
-  } else {
-    ctx.lineWidth = soloSize; ctx.strokeStyle = soloColor;
-    ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
-  }
-  ctx.restore();
-}
-
-// ============ 无限画布：两指缩放/平移 ============
-soloCanvas.addEventListener('touchstart', (e) => {
-  if (e.touches.length === 2) {
-    e.preventDefault();
-    soloPinching = true; soloTwoFinger = true;
-    soloDrawing = false;
-    const m = getTwoFingerMid(e);
-    soloPinchStartDist = m.dist; soloPinchStartZoom = soloCamZoom;
-    soloPinchMidX = m.x; soloPinchMidY = m.y;
-    soloZoomHint.classList.remove('hidden');
-  } else if (e.touches.length === 1 && !soloPinching) {
-    soloTwoFinger = false;
-    soloStart(e);
-  }
-}, { passive: false });
-
-soloCanvas.addEventListener('touchmove', (e) => {
-  if (e.touches.length === 2 && soloPinching) {
-    e.preventDefault();
-    soloPinchMove(e);
-  } else if (soloPanning) {
-    soloPanMove(e);
-  } else if (!soloPinching) {
-    soloMove(e);
-  }
-}, { passive: false });
-
-soloCanvas.addEventListener('touchend', (e) => {
-  if (e.touches.length < 2 && soloPinching) { soloPinchEnd(e); return; }
-  if (e.touches.length === 0) { soloTwoFinger = false; soloPinching = false; }
-  soloEnd(e);
-});
-
-function soloPinchMove(e) {
-  const m = getTwoFingerMid(e);
-  const newZoom = soloPinchStartZoom * (m.dist / soloPinchStartDist);
-  soloCamZoom = Math.max(0.01, Math.min(5, newZoom));
-  // 以两指中点为中心缩放
-  const ratio = soloCamZoom / soloPinchStartZoom;
-  soloCamX = m.x - (soloPinchMidX - soloCamX) * ratio;
-  soloCamY = m.y - (soloPinchMidY - soloCamY) * ratio;
-  soloPinchMidX = m.x; soloPinchMidY = m.y;
-  soloPinchStartZoom = soloCamZoom;
-  soloPinchStartDist = m.dist;
-  redrawAllStrokes();
-  updateZoomBadge();
-}
-
-function soloPinchEnd(e) {
-  soloPinching = false;
-  soloTwoFinger = e.touches.length >= 2;
-  setTimeout(() => soloZoomHint.classList.add('hidden'), 1500);
-}
-
-// ============ 单指平移（✋ 模式） ============
-soloPanBtn.addEventListener('click', () => {
-  soloIsPanMode = !soloIsPanMode;
-  soloPanBtn.classList.toggle('active', soloIsPanMode);
-  soloCanvas.style.cursor = soloIsPanMode ? 'grab' : 'crosshair';
-});
-
-function soloStartPan(e) {
-  soloPanning = true;
-  const p = getSoloPos(e);
-  soloLastPanX = p.rawX; soloLastPanY = p.rawY;
-}
-
-function soloPanMove(e) {
-  if (!soloPanning) return;
-  e.preventDefault();
-  const p = getSoloPos(e);
-  soloCamX += p.rawX - soloLastPanX;
-  soloCamY += p.rawY - soloLastPanY;
-  soloLastPanX = p.rawX; soloLastPanY = p.rawY;
-  redrawAllStrokes();
-}
-
-function soloEndPan(e) { soloPanning = false; }
-
-function updateZoomBadge() { soloZoomBadge.textContent = Math.round(soloCamZoom * 100) + '%'; }
-
-// ============ 工具栏控制器 ============
-$$('.solo-brush-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    $$('.solo-brush-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    soloBrush = btn.dataset.brush;
-  });
-});
-
-soloSizeSlider.addEventListener('input', () => {
-  soloSize = parseInt(soloSizeSlider.value);
-  soloSizeVal.textContent = soloSize;
-});
-
-soloOpacitySlider.addEventListener('input', () => {
-  soloOpacity = parseInt(soloOpacitySlider.value) / 100;
-  soloOpacityVal.textContent = parseInt(soloOpacitySlider.value);
-});
-
-soloSmoothSlider.addEventListener('input', () => {
-  soloHardness = 1 - parseInt(soloSmoothSlider.value) / 100; // 平滑度→硬度：100%平滑=0硬度(柔和)
-  soloSmoothVal.textContent = parseInt(soloSmoothSlider.value);
-  brushTipCache = null; // 清除缓存让笔尖重建
-});
-
-$$('.solo-color-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    $$('.solo-color-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    soloColor = btn.dataset.color;
-    soloCustomColor.value = soloColor;
-    brushTipCache = null;
-  });
-});
-
-soloCustomColor.addEventListener('input', () => {
-  soloColor = soloCustomColor.value;
-  $$('.solo-color-btn').forEach(b => b.classList.remove('active'));
-  brushTipCache = null;
-});
-
-soloUndoBtn.addEventListener('click', () => {
-  if (soloStrokes.length === 0) return;
-  soloUndoStack.push(soloStrokes.pop());
-  redrawAllStrokes();
-  updateUndoRedoBtns();
-});
-
-soloRedoBtn.addEventListener('click', () => {
-  if (soloUndoStack.length === 0) return;
-  soloStrokes.push(soloUndoStack.pop());
-  redrawAllStrokes();
-  updateUndoRedoBtns();
-});
-
-soloClearBtn.addEventListener('click', () => {
-  if (soloStrokes.length === 0) return;
-  if (confirm('确定清空画布吗？此操作不可恢复。')) {
-    soloStrokes = []; soloUndoStack = [];
-    initSoloCanvas(); updateUndoRedoBtns();
-  }
-});
-
-soloSaveBtn.addEventListener('click', () => {
-  const link = document.createElement('a');
-  link.download = '我的画作_' + new Date().toISOString().slice(0, 10) + '.png';
-  link.href = soloCanvas.toDataURL('image/png');
-  link.click();
-  showToast('💾 画作已保存！');
-});
-
-function updateUndoRedoBtns() {
-  soloUndoBtn.disabled = soloStrokes.length === 0;
-  soloRedoBtn.disabled = soloUndoStack.length === 0;
-}
-
-// 进入/退出
-soloModeBtn.addEventListener('click', () => {
-  lobbyScreen.classList.remove('active');
-  soloScreen.classList.add('active');
-  soloStrokes = []; soloUndoStack = [];
-  soloCamX = 0; soloCamY = 0; soloCamZoom = 1;
-  initSoloCanvas(); updateUndoRedoBtns(); updateZoomBadge();
-});
-
-soloBackBtn.addEventListener('click', () => {
-  soloScreen.classList.remove('active');
-  lobbyScreen.classList.add('active');
-  soloIsPanMode = false; soloPanBtn.classList.remove('active');
-});
-
-// 缩放画布（滚轮）
-soloCanvas.addEventListener('wheel', (e) => {
-  e.preventDefault();
-  const rect = soloCanvas.getBoundingClientRect();
-  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-  const zoom = soloCamZoom * (e.deltaY < 0 ? 1.1 : 0.9);
-  const nz = Math.max(0.01, Math.min(5, zoom));
-  soloCamX = mx - (mx - soloCamX) * (nz / soloCamZoom);
-  soloCamY = my - (my - soloCamY) * (nz / soloCamZoom);
-  soloCamZoom = nz;
-  redrawAllStrokes();
-  updateZoomBadge();
-}, { passive: false });
-
-// ============ 工具栏折叠 ============
-soloToggleToolbar.addEventListener('click', () => {
-  soloToolbarCollapsed = !soloToolbarCollapsed;
-  soloToolbar.classList.toggle('collapsed', soloToolbarCollapsed);
-  soloToggleToolbar.textContent = soloToolbarCollapsed ? '▲' : '▼';
-});
-
-// ============ 沉浸模式 ============
-soloImmerseBtn.addEventListener('click', enterImmersive);
-soloExitImmerse.addEventListener('click', exitImmersive);
-
-function enterImmersive() {
-  soloImmersed = true;
-  document.querySelector('#solo-top-bar').classList.add('immersed');
-  soloToolbar.classList.add('immersed');
-  soloExitImmerse.classList.remove('hidden');
-  soloToolbarCollapsed = false;
-}
-
-function exitImmersive() {
-  soloImmersed = false;
-  document.querySelector('#solo-top-bar').classList.remove('immersed');
-  soloToolbar.classList.remove('immersed');
-  soloExitImmerse.classList.add('hidden');
-}
-
-// 沉浸模式下点击画布临时显示 UI
-soloCanvas.addEventListener('click', (e) => {
-  if (!soloImmersed) return;
-  const tb = document.querySelector('#solo-top-bar');
-  tb.classList.remove('immersed');
-  soloToolbar.classList.remove('immersed');
-  soloExitImmerse.classList.remove('hidden');
-  clearTimeout(soloImmersedTimeout);
-  soloImmersedTimeout = setTimeout(() => {
-    tb.classList.add('immersed');
-    soloToolbar.classList.add('immersed');
-  }, 2000);
-});
-
-// resize
-window.addEventListener('resize', () => { if (soloScreen.classList.contains('active')) initSoloCanvas(); });
-window.addEventListener('orientationchange', () => { if (soloScreen.classList.contains('active')) setTimeout(initSoloCanvas, 300); });
+// entry/exit
+soloModeBtn.addEventListener('click',function(){lobbyScreen.classList.remove('active');soloScreen.classList.add('active');soloStrokes=[];soloUndoStack=[];soloCamX=0;soloCamY=0;soloCamZoom=1;soloImmersed=false;soloToolbarCollapsed=false;el('#solo-top-bar').classList.remove('immersed');el('#solo-toolbar').classList.remove('immersed','collapsed');el('#solo-exit-immerse').classList.add('hidden');el('#solo-toggle-toolbar').textContent='▼';initSoloCanvas();updateUndoRedoBtns();updateZoomBadge();});
+soloBackBtn.addEventListener('click',function(){soloScreen.classList.remove('active');lobbyScreen.classList.add('active');soloIsPanMode=false;soloPanBtn.classList.remove('active');});
+window.addEventListener('resize',function(){if(soloScreen.classList.contains('active'))initSoloCanvas();});
+window.addEventListener('orientationchange',function(){if(soloScreen.classList.contains('active'))setTimeout(initSoloCanvas,300);});
 
 console.log('🎨 你画我猜 v2 - 前端就绪');
