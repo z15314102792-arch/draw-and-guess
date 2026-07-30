@@ -173,7 +173,7 @@ function connectSocket() {
     $$('.mode-btn').forEach(b => b.classList.remove('active'));
     const ab = document.querySelector('.mode-btn[data-mode="' + mode + '"]');
     if (ab) ab.classList.add('active');
-    const descs = { classic: '经典模式：轮流画词猜词，60秒', speed: '快速模式：30秒速画，只用简单词', blind: '盲画模式：画时看不到笔迹，揭晓笑翻全场' };
+    const descs = { classic: '经典模式：轮流画词猜词，60秒', speed: '快速模式：30秒速画，只用简单词', blind: '盲画模式：画时看不到笔迹，揭晓笑翻全场', chain: '接龙模式：画→猜→画→猜传递，最后揭晓链条（需3+人，不足时AI补位）' };
     if (modeDesc) modeDesc.textContent = descs[mode] || '';
     showToast(modeName);
   });
@@ -330,9 +330,152 @@ function connectSocket() {
     addChatMessage('system', '🏆 ' + winner.name + ' 获胜！(' + winner.score + '分)');
     if (isHost) setTimeout(() => playAgainBtn.classList.remove('hidden'), 2000);
   });
-}
 
-// ============ Canvas 绘图 ============
+  // --- 接龙模式 v5.0 ---
+  socket.on('chain-draw-phase', ({ prompt, promptType, stepNumber, totalSteps }) => {
+    gameStatus = 'chain-draw';
+    setDrawerMode(true);
+    clearCanvas();
+    toolbar.classList.remove('hidden');
+    guessBar.classList.add('hidden');
+    wordHintBar.classList.remove('hidden');
+    wordHintText.textContent = (promptType === 'word' ? '🎨 画出：「' + prompt + '」' : '🎨 根据猜测画：「' + prompt + '」') + ' [' + stepNumber + '/' + totalSteps + ']';
+    roundInfo.textContent = '接龙 ' + stepNumber + '/' + totalSteps;
+    timerDisplay.textContent = '⏱ --';
+    // 显示提交按钮
+    var sb = $('#chain-submit-btn');
+    if (sb) { sb.classList.remove('hidden'); sb.disabled = false; }
+    hideChainGuessPanel();
+  });
+
+  socket.on('chain-guess-phase', ({ imageData, stepNumber, totalSteps }) => {
+    gameStatus = 'chain-guess';
+    setDrawerMode(false);
+    clearCanvas();
+    toolbar.classList.add('hidden');
+    guessBar.classList.add('hidden');
+    wordHintBar.classList.remove('hidden');
+    wordHintText.textContent = '🔍 看图猜词 [' + stepNumber + '/' + totalSteps + ']';
+    roundInfo.textContent = '接龙 ' + stepNumber + '/' + totalSteps;
+    timerDisplay.textContent = '⏱ --';
+    // 显示前一幅画
+    var img = new Image();
+    img.onload = function () { ctx.drawImage(img, 0, 0, parseFloat(drawCanvas.style.width), parseFloat(drawCanvas.style.height)); };
+    img.src = imageData;
+    showChainGuessPanel();
+  });
+
+  socket.on('chain-waiting', ({ currentPlayer, step, total, message }) => {
+    gameStatus = 'chain-waiting';
+    setDrawerMode(false);
+    clearCanvas();
+    toolbar.classList.add('hidden');
+    guessBar.classList.add('hidden');
+    wordHintBar.classList.remove('hidden');
+    wordHintText.textContent = '⏳ ' + message;
+    roundInfo.textContent = '接龙 ' + step + '/' + total;
+    timerDisplay.textContent = '⏱ --';
+    hideChainSubmit();
+    hideChainGuessPanel();
+  });
+
+  socket.on('chain-reveal', ({ steps, playerOrder, originalWord }) => {
+    gameStatus = 'chain-reveal';
+    clearCanvas();
+    toolbar.classList.add('hidden');
+    guessBar.classList.add('hidden');
+    hideChainSubmit();
+    hideChainGuessPanel();
+    showChainReveal(steps, originalWord);
+  });
+
+  socket.on('chain-finished', () => {
+    gameStatus = 'waiting';
+    hideChainReveal();
+    clearCanvas();
+    showWaitingMode();
+    setDrawerMode(false);
+    addChatMessage('system', '🔗 接龙结束！可以开始新一轮');
+  });
+
+  // 接龙模式：画作提交按钮
+  var chainSubmitBtn = $('#chain-submit-btn');
+  if(chainSubmitBtn) chainSubmitBtn.addEventListener('click', function(){
+    if(gameStatus !== 'chain-draw') return;
+    this.disabled = true;
+    var imgData = drawCanvas.toDataURL('image/png');
+    socket.emit('chain-draw-submit', { imageData: imgData });
+    this.classList.add('hidden');
+    wordHintText.textContent = '✅ 已提交画作，等待其他人...';
+  });
+
+  // 接龙模式：猜测提交按钮
+  var chainGuessSubmitBtn = $('#chain-guess-submit-btn');
+  if(chainGuessSubmitBtn) chainGuessSubmitBtn.addEventListener('click', submitChainGuess);
+  var chainGuessInput = $('#chain-guess-input');
+  if(chainGuessInput) chainGuessInput.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' || e.key === 'done' || e.key === 'go'){ e.preventDefault(); submitChainGuess(); }
+  });
+
+  // 接龙模式：猜测提交
+  function submitChainGuess(){
+    var inp = $('#chain-guess-input');
+    if(!inp) return;
+    var guess = inp.value.trim();
+    if(!guess) return;
+    socket.emit('chain-guess-submit', { guess: guess });
+    inp.value = '';
+    inp.disabled = true;
+    var sb = $('#chain-guess-submit-btn');
+    if(sb) sb.disabled = true;
+    hideChainGuessPanel();
+    wordHintText.textContent = '✅ 已提交猜测，等待其他人...';
+  }
+
+  function showChainGuessPanel(){
+    var p = $('#chain-guess-panel');
+    if(p) p.classList.remove('hidden');
+    var inp = $('#chain-guess-input');
+    if(inp) { inp.disabled = false; inp.value = ''; setTimeout(function(){inp.focus();}, 200); }
+    var sb = $('#chain-guess-submit-btn');
+    if(sb) sb.disabled = false;
+  }
+  function hideChainGuessPanel(){
+    var p = $('#chain-guess-panel');
+    if(p) p.classList.add('hidden');
+  }
+  function hideChainSubmit(){
+    var sb = $('#chain-submit-btn');
+    if(sb) sb.classList.add('hidden');
+  }
+  function showChainReveal(steps, originalWord){
+    var el = $('#chain-reveal-panel');
+    if(!el) return;
+    el.innerHTML = '<h3>🔗 接龙揭晓</h3><p style="color:var(--text-muted);margin-bottom:12px">原词：<b>' + originalWord + '</b></p>';
+    steps.forEach(function(s, i){
+      var div = document.createElement('div');
+      div.className = 'chain-step-item';
+      div.style.animationDelay = (i * 0.5) + 's';
+      if(s.type === 'word'){
+        div.innerHTML = '<span class="chain-step-badge">📝</span> <b>' + s.playerName + '</b> 看到词：<b>' + s.data + '</b>';
+      } else if(s.type === 'draw'){
+        div.innerHTML = '<span class="chain-step-badge">🎨</span> <b>' + s.playerName + '</b> 画了：<br><img src="' + s.data + '" style="max-width:100%;border-radius:8px;margin-top:4px">';
+      } else if(s.type === 'guess'){
+        div.innerHTML = '<span class="chain-step-badge">🔍</span> <b>' + s.playerName + '</b> 猜：<b>' + s.data + '</b>';
+      }
+      el.appendChild(div);
+    });
+    el.classList.remove('hidden');
+    wordHintBar.classList.remove('hidden');
+    wordHintText.textContent = '🎬 接龙揭晓！原词：「' + originalWord + '」→ 看看变成了什么...';
+  }
+  function hideChainReveal(){
+    var el = $('#chain-reveal-panel');
+    if(el) el.classList.add('hidden');
+  }
+  }
+
+  // ============ Canvas 绘图 ============
 function resizeCanvas() {
   const area = $('#canvas-area');
   const maxW = Math.min(area.clientWidth - 16, 500);
@@ -593,6 +736,67 @@ waitingCollapseBtn.addEventListener('click', () => {
   waitingBarExpanded.classList.add('hidden');
   waitingBarCollapsed.classList.remove('hidden');
 });
+
+// ============ 自定义词库 ============
+var customWordsToggle = $('#custom-words-toggle');
+var customWordsPanel = $('#custom-words-panel');
+if(customWordsToggle) customWordsToggle.addEventListener('click', function(){
+  var isHidden = customWordsPanel.classList.contains('hidden');
+  customWordsPanel.classList.toggle('hidden', !isHidden);
+  this.textContent = isHidden ? '📝 自定义词库 ▾' : '📝 自定义词库 ▸';
+});
+
+var customWordsSave = $('#custom-words-save');
+if(customWordsSave) customWordsSave.addEventListener('click', function(){
+  var ta = $('#custom-words-input');
+  if(!ta) return;
+  var words = ta.value.split(/[\n,，]+/).map(function(w){return w.trim();}).filter(function(w){return w.length > 0;});
+  if(words.length < 10){ showToast('至少需要10个词'); return; }
+  var code = btoa(unescape(encodeURIComponent(words.join(','))));
+  socket.emit('set-custom-words', { words: words });
+  try { localStorage.setItem('custom-words-code', code); } catch(e) {}
+  showToast('✅ 词库已保存（' + words.length + '个词）');
+});
+
+var customWordsShare = $('#custom-words-share');
+if(customWordsShare) customWordsShare.addEventListener('click', function(){
+  var ta = $('#custom-words-input');
+  if(!ta) return;
+  var words = ta.value.split(/[\n,，]+/).map(function(w){return w.trim();}).filter(function(w){return w.length > 0;});
+  if(words.length < 10){ showToast('至少需要10个词才能分享'); return; }
+  var code = btoa(unescape(encodeURIComponent(words.join(','))));
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(code).then(function(){ showToast('✅ 词包码已复制'); });
+  } else {
+    fallbackCopy(code);
+  }
+});
+
+var customWordsLoad = $('#custom-words-load');
+var customWordsCode = $('#custom-words-code');
+if(customWordsLoad && customWordsCode) customWordsLoad.addEventListener('click', function(){
+  var code = customWordsCode.value.trim();
+  if(!code){ showToast('请粘贴词包码'); return; }
+  try {
+    var words = decodeURIComponent(escape(atob(code))).split(',').filter(function(w){return w.trim();});
+    if(words.length < 10){ showToast('词包码无效或词数不足'); return; }
+    var ta = $('#custom-words-input');
+    if(ta) ta.value = words.join('\n');
+    socket.emit('set-custom-words', { words: words });
+    try { localStorage.setItem('custom-words-code', code); } catch(e) {}
+    showToast('✅ 已加载词包（' + words.length + '个词）');
+  } catch(e){ showToast('词包码格式错误'); }
+});
+
+// 页面加载时恢复之前保存的词包码
+(function(){
+  try {
+    var savedCode = localStorage.getItem('custom-words-code');
+    if(savedCode && customWordsCode){
+      customWordsCode.value = savedCode;
+    }
+  } catch(e) {}
+})();
 
 // ============ 等待底栏：复制房间号（只复制房间号） ============
 copyRoomBtn.addEventListener('click', () => {
@@ -1258,4 +1462,200 @@ window.addEventListener('orientationchange',function(){if(soloScreen.classList.c
 // 主题切换
 (function(){var b=document.querySelector('#theme-toggle');if(b)b.addEventListener('click',function(){var h=document.documentElement;var t=h.getAttribute('data-theme')==='dark'?'light':'dark';h.setAttribute('data-theme',t);localStorage.setItem('solo-theme',t);});})();
 
-console.log('🎨 你画我猜 v4.2 - 前端就绪');
+// ============ 每日挑战 v5.0 ============
+var dailyBar = $('#solo-daily-bar'), dailyWordEl = $('#daily-word'), dailySubmitBtn = $('#daily-submit-btn');
+var dailyCancelBtn = $('#daily-cancel-btn'), isDailyMode = false, dailyWord = '';
+
+function getDailyWord(){
+  var now = new Date(), seed = now.getFullYear()*10000 + (now.getMonth()+1)*100 + now.getDate();
+  var easyWords = ['苹果','猫','狗','太阳','花','树','房子','鱼','鸟','星星','心','杯子','帽子','鞋子','眼镜',
+    '香蕉','西瓜','兔子','熊猫','汽车','飞机','手机','电脑','足球','月亮','彩虹','蘑菇','贝壳','蝴蝶','蛋糕',
+    '冰淇淋','大象','老虎','长颈鹿','企鹅','海豚','鲸鱼','火箭','帆船','吉他','钢琴','钥匙','蜡烛','雪人',
+    '圣诞树','南瓜','饺子','汉堡','披萨','寿司','机器人','恐龙','风车','灯塔','城堡'];
+  return easyWords[seed % easyWords.length];
+}
+
+function enterDailyMode(){
+  dailyWord = getDailyWord();
+  isDailyMode = true;
+  if(dailyBar) dailyBar.classList.remove('hidden');
+  if(dailyWordEl) dailyWordEl.textContent = dailyWord;
+  soloStrokes = []; soloUndoStack = [];
+  soloCamX = 0; soloCamY = 0; soloCamZoom = 1;
+  soloSessionStart = Date.now(); soloReplayMode = false;
+  initSoloCanvas(); updateUndoRedoBtns();
+  showToast('📅 今日挑战：' + dailyWord);
+}
+
+function exitDailyMode(){
+  isDailyMode = false;
+  if(dailyBar) dailyBar.classList.add('hidden');
+  soloStrokes = []; soloUndoStack = [];
+  soloCamX = 0; soloCamY = 0; soloCamZoom = 1;
+  initSoloCanvas(); updateUndoRedoBtns();
+  showToast('已退出每日挑战');
+}
+
+function submitDailyWork(){
+  if(!soloStrokes.length){ showToast('先画点东西吧'); return; }
+  var dataUrl = soloCanvas.toDataURL('image/png');
+  var dateKey = new Date().toISOString().slice(0,10);
+  var gallery = {};
+  try { gallery = JSON.parse(localStorage.getItem('daily-gallery') || '{}'); } catch(e){}
+  gallery[dateKey] = { word: dailyWord, image: dataUrl, time: Date.now() };
+  try { localStorage.setItem('daily-gallery', JSON.stringify(gallery)); } catch(e){
+    showToast('保存失败，画布太大了');
+    return;
+  }
+  trackAchievement('daily-submit');
+  showToast('✅ 作品已提交！今日挑战完成');
+  exitDailyMode();
+}
+
+if(dailySubmitBtn) dailySubmitBtn.addEventListener('click', submitDailyWork);
+if(dailyCancelBtn) dailyCancelBtn.addEventListener('click', exitDailyMode);
+
+// 进入单人模式时检测是否是每日挑战
+(function(){
+  var origSoloEntry = soloModeBtn.onclick;
+  // 在 lobby 上加每日挑战入口
+  var dailyEntryBtn = document.createElement('button');
+  dailyEntryBtn.className = 'btn btn-daily btn-block';
+  dailyEntryBtn.textContent = '📅 每日挑战';
+  dailyEntryBtn.style.cssText = 'margin-top:8px;background:linear-gradient(135deg,#FF9800,#FF5722);color:#fff;border:none';
+  dailyEntryBtn.addEventListener('click', function(){
+    lobbyScreen.classList.remove('active');
+    soloScreen.classList.add('active');
+    soloStrokes = []; soloUndoStack = [];
+    soloCamX = 0; soloCamY = 0; soloCamZoom = 1;
+    soloImmersed = false; soloToolbarCollapsed = false;
+    rainbowHue = Math.random()*360;
+    soloSessionStart = Date.now();
+    soloReplayMode = false; soloReplayPaused = false;
+    if(soloReplayTimer){ cancelAnimationFrame(soloReplayTimer); soloReplayTimer = null; }
+    var rb = dq('#solo-replay-bar'); if(rb) rb.classList.add('hidden');
+    soloScreen.classList.remove('immersed-full');
+    var t = dq('#solo-top-bar'); if(t) t.classList.remove('immersed');
+    var tb = dq('#solo-toolbar'); if(tb){ tb.classList.remove('immersed'); tb.classList.remove('collapsed'); }
+    var eb = dq('#solo-exit-immerse'); if(eb) eb.classList.add('hidden');
+    var bt = dq('#solo-toggle-toolbar'); if(bt) bt.textContent = '▼';
+    enterDailyMode(); updateUndoRedoBtns(); updateZoomBadge();
+  });
+  // 插在单人创作按钮后面
+  if(soloModeBtn && soloModeBtn.parentNode){
+    soloModeBtn.parentNode.insertBefore(dailyEntryBtn, soloModeBtn.nextSibling);
+  }
+})();
+
+// ============ 成就系统 v5.0 ============
+var achievements = {
+  'first-draw': { name: '初出茅庐', desc: '完成第一幅画', icon: '🎨' },
+  '10-strokes': { name: '勤学苦练', desc: '累计画10笔', icon: '✏️' },
+  'brush-master': { name: '画笔大师', desc: '使用过10种画笔', icon: '🖌' },
+  'daily-submit': { name: '日拱一卒', desc: '完成一次每日挑战', icon: '📅' },
+  'save-work': { name: '收藏家', desc: '保存一幅画作', icon: '💾' },
+  'replay-watch': { name: '自我欣赏', desc: '观看一次回放', icon: '▶' },
+};
+
+function getAchievements(){
+  try { return JSON.parse(localStorage.getItem('achievements') || '{}'); } catch(e){ return {}; }
+}
+function trackAchievement(key){
+  var data = getAchievements();
+  if(data[key]) return; // 已解锁
+  data[key] = Date.now();
+  try { localStorage.setItem('achievements', JSON.stringify(data)); } catch(e){}
+  var a = achievements[key];
+  if(a) showToast('🏆 成就解锁：' + a.icon + ' ' + a.name + ' - ' + a.desc);
+  updateAchievementBadge();
+}
+
+function trackStat(key, delta){
+  var stats = {};
+  try { stats = JSON.parse(localStorage.getItem('game-stats') || '{}'); } catch(e){}
+  stats[key] = (stats[key] || 0) + (delta || 1);
+  try { localStorage.setItem('game-stats', JSON.stringify(stats)); } catch(e){}
+  // 触发条件成就
+  if(key === 'total-strokes' && stats[key] >= 10) trackAchievement('10-strokes');
+  if(key === 'brushes-used'){
+    var brushes = [];
+    try { brushes = JSON.parse(localStorage.getItem('brushes-used-list') || '[]'); } catch(e){}
+    if(brushes.length >= 10) trackAchievement('brush-master');
+  }
+}
+
+function updateAchievementBadge(){
+  var data = getAchievements();
+  var keys = Object.keys(data);
+  var badge = $('#achievements-badge');
+  var count = $('#achievements-count');
+  if(badge && count && keys.length > 0){
+    badge.classList.remove('hidden');
+    count.textContent = keys.length;
+  }
+}
+
+// 追踪统计
+(function(){
+  // 首次画画
+  var origSoloEnd = soloEnd;
+  // 使用 once 方式追踪（在 soloEnd 中追踪会在每次笔画结束时触发）
+  var hasTrackedFirstStroke = false;
+  var origPush = Array.prototype.push;
+  var soloStrokesRef = null;
+  // 在画笔切换时追踪
+  var brushTracker = {};
+  var origBrushClick = dq('#solo-brushes') ? dq('#solo-brushes').onclick : null;
+  if(dq('#solo-brushes')){
+    dq('#solo-brushes').addEventListener('click', function(e){
+      var btn = e.target.closest('.solo-brush-btn');
+      if(!btn || !isDailyMode && !soloStrokes.length) return;
+      var b = btn.dataset.brush;
+      if(b && !brushTracker[b]){
+        brushTracker[b] = true;
+        try {
+          var bl = JSON.parse(localStorage.getItem('brushes-used-list') || '[]');
+          if(bl.indexOf(b) === -1){ bl.push(b); localStorage.setItem('brushes-used-list', JSON.stringify(bl)); }
+          trackStat('brushes-used', 1);
+        } catch(e2){}
+      }
+    });
+  }
+  // 在 soloEnd 内追踪笔画
+  var origSoloSave = soloSaveBtn ? soloSaveBtn.onclick : null;
+  if(soloSaveBtn){
+    soloSaveBtn.addEventListener('click', function(){
+      trackAchievement('save-work');
+    });
+  }
+  // 回放追踪
+  var origReplay = dq('#solo-replay-btn') ? dq('#solo-replay-btn').onclick : null;
+  if(dq('#solo-replay-btn')){
+    var replayBtn = dq('#solo-replay-btn');
+    replayBtn.addEventListener('click', function(){
+      if(!soloReplayMode && soloStrokes.length) trackAchievement('replay-watch');
+    });
+  }
+  updateAchievementBadge();
+})();
+
+// soloEnd 追踪（首次画画成就）
+(function(){
+  var trackedFirst = false;
+  var origSES = soloEnd;
+  // 在 soloModeBtn 的 click 中重置
+  var origSoloClick = soloModeBtn.onclick;
+  soloModeBtn.addEventListener('click', function(){
+    trackedFirst = false;
+  });
+  // 通过 MutationObserver 或其他方式追踪笔画
+  var checkStrokes = setInterval(function(){
+    if(!trackedFirst && soloStrokes.length > 0){
+      trackedFirst = true;
+      trackAchievement('first-draw');
+      trackStat('total-strokes');
+    }
+  }, 2000);
+})();
+
+console.log('🎨 你画我猜 v5.0 - 前端就绪');

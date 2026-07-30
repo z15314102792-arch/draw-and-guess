@@ -249,3 +249,21 @@ input[type="text"]:focus{border-color:var(--primary)}
 .solo-exit-immerse.hidden{opacity:0;pointer-events:none}
 
 @media(min-width:768px){#game-screen{max-width:500px;margin:0 auto;border-left:1px solid var(--border);border-right:1px solid var(--border)}.slide-menu{width:300px}}
+/* 接龙模式 */
+.chain-reveal-panel{background:var(--card);border-radius:var(--radius);padding:16px;margin:10px 0;max-height:60vh;overflow-y:auto}
+.chain-reveal-panel h3{text-align:center;margin-bottom:8px}
+.chain-step-item{background:var(--bg);border-radius:8px;padding:10px 12px;margin-bottom:8px;animation:chainFadeIn 0.5s ease both}
+.chain-step-badge{font-size:1.2rem;margin-right:6px}
+@keyframes chainFadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.btn-accent{background:#FF9800;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:0.9rem;cursor:pointer}
+.btn-accent:disabled{opacity:0.4}
+.custom-words-section{margin-top:8px}
+#custom-words-input{resize:vertical;min-height:60px}
+/* 每日挑战 */
+.solo-daily{background:linear-gradient(135deg,rgba(255,152,0,0.1),rgba(255,87,34,0.05));border:1px solid #FF9800;border-radius:10px;padding:10px 12px;gap:8px;align-items:center;flex-wrap:wrap}
+.solo-daily.hidden{display:none}
+.btn-daily{border-radius:10px;padding:14px;font-size:1rem;font-weight:600;cursor:pointer;transition:all 0.2s}
+.btn-daily:active{transform:scale(0.96)}
+/* 成就 */
+.achievements-badge{position:fixed;top:10px;right:10px;z-index:200;background:var(--card);border:2px solid #FFD700;border-radius:20px;padding:4px 10px;display:flex;align-items:center;gap:4px;font-size:0.8rem;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+.achievements-badge.hidden{display:none}

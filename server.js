@@ -18,10 +18,18 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ============ 词库处理 ============
 const allWords = [...wordData.easy, ...wordData.medium, ...wordData.hard];
+const aiNames = ['🤖 小智', '🤖 阿呆', '🤖 逗逗'];
 
-/** 随机抽取 n 个不重复的词语，speed 模式只用简单词 */
-function pickWords(n = 3, mode = 'classic') {
-  const pool = mode === 'speed' ? [...wordData.easy] : [...allWords];
+/** 随机抽取 n 个不重复的词语，speed 模式只用简单词，支持自定义词库 */
+function pickWords(n = 3, mode = 'classic', customWords = null) {
+  let pool;
+  if (customWords && customWords.length >= 10) {
+    pool = [...customWords];
+  } else if (mode === 'speed') {
+    pool = [...wordData.easy];
+  } else {
+    pool = [...allWords];
+  }
   const result = [];
   for (let i = 0; i < n && pool.length > 0; i++) {
     const idx = Math.floor(Math.random() * pool.length);
@@ -198,10 +206,10 @@ io.on('connection', (socket) => {
     if (!room || room.status !== 'waiting') return;
     const player = getPlayer(room, socket.id);
     if (!player || !player.isHost) return;
-    if (!['classic', 'speed', 'blind'].includes(mode)) return;
+    if (!['classic', 'speed', 'blind', 'chain'].includes(mode)) return;
 
     room.mode = mode;
-    const modeNames = { classic: '经典模式', speed: '快速模式(30秒)', blind: '盲画模式' };
+    const modeNames = { classic: '经典模式', speed: '快速模式(30秒)', blind: '盲画模式', chain: '接龙模式' };
     io.to(room.id).emit('mode-changed', { mode, modeName: modeNames[mode] });
     io.to(room.id).emit('chat-message', {
       type: 'system',
@@ -240,7 +248,13 @@ io.on('connection', (socket) => {
     room.drawerIndex = -1;
     room.players.forEach(p => { p.score = 0; p.isDrawer = false; });
 
-    const modeNames = { classic: '经典模式', speed: '快速模式', blind: '盲画模式' };
+    const modeNames = { classic: '经典模式', speed: '快速模式(30秒)', blind: '盲画模式', chain: '接龙模式' };
+
+    if (room.mode === 'chain') {
+      startChainGame(room);
+      return;
+    }
+
     io.to(room.id).emit('game-started', {
       totalRounds: room.totalRounds,
       mode: room.mode,
@@ -432,6 +446,58 @@ io.on('connection', (socket) => {
       type: 'chat',
       message: message.trim(),
       from: player?.name || '未知',
+    });
+  });
+
+  // ---------- 接龙模式：提交画作 ----------
+  socket.on('chain-draw-submit', ({ imageData }) => {
+    const room = getRoom(socket.data.roomId);
+    if (!room || room.mode !== 'chain') return;
+    const player = getPlayer(room, socket.id);
+    if (!player || !player.isDrawer) return;
+
+    room.chain.steps.push({ type: 'draw', playerId: player.id, playerName: player.name, data: imageData });
+    player.isDrawer = false;
+
+    io.to(room.id).emit('chat-message', {
+      type: 'system', message: `✅ ${player.name} 完成了绘画`,
+    });
+    nextChainStep(room);
+  });
+
+  // ---------- 接龙模式：提交猜测 ----------
+  socket.on('chain-guess-submit', ({ guess }) => {
+    const room = getRoom(socket.data.roomId);
+    if (!room || room.mode !== 'chain') return;
+    const player = getPlayer(room, socket.id);
+    if (!player || room.chain.currentGuesser !== player.id) return;
+
+    room.chain.steps.push({ type: 'guess', playerId: player.id, playerName: player.name, data: guess.trim() });
+
+    io.to(room.id).emit('chat-message', {
+      type: 'chat', message: guess.trim(),
+      from: player.name,
+    });
+    io.to(room.id).emit('chat-message', {
+      type: 'system', message: `✅ ${player.name} 提交了猜测`,
+    });
+    nextChainStep(room);
+  });
+
+  // ---------- 自定义词库 ----------
+  socket.on('set-custom-words', ({ words }) => {
+    const room = getRoom(socket.data.roomId);
+    if (!room || room.status !== 'waiting') return;
+    const player = getPlayer(room, socket.id);
+    if (!player || !player.isHost) return;
+    if (!Array.isArray(words) || words.length < 10) {
+      socket.emit('error', { message: '至少需要 10 个词' });
+      return;
+    }
+    room.customWords = words.filter(w => w && w.trim());
+    io.to(room.id).emit('chat-message', {
+      type: 'system',
+      message: `📝 ${player.name} 设置了自定义词库（${room.customWords.length}个词）`,
     });
   });
 
@@ -729,6 +795,190 @@ function endGame(room) {
   console.log(`[游戏结束] ${room.id} 赢家: ${winner.name}`);
 }
 
+// ============ 接龙模式 ============
+
+function startChainGame(room) {
+  room.status = 'chain';
+  const connected = room.players.filter(p => p.connected);
+  let shuffled = [...connected].sort(() => Math.random() - 0.5);
+
+  // 少于3人时插入AI猜词者
+  if (shuffled.length < 3) {
+    const aiCount = 3 - shuffled.length;
+    for (let i = 0; i < aiCount; i++) {
+      shuffled.splice(1 + i * 2, 0, { id: '__ai_' + i, name: aiNames[i], isAI: true, connected: true });
+    }
+  }
+
+  room.chain = {
+    steps: [],
+    playerOrder: shuffled.map(p => p.id),
+    currentIndex: 0,
+    currentGuesser: null,
+    players: shuffled,
+  };
+
+  // 第一个玩家：看词画画
+  const firstPlayer = shuffled[0];
+  firstPlayer.isDrawer = true;
+  const word = pickWords(1, 'classic', room.customWords)[0];
+  room.chain.originalWord = word;
+  room.chain.steps.push({ type: 'word', playerId: firstPlayer.id, playerName: firstPlayer.name, data: word });
+
+  room.players.forEach(p => { p.score = 0; p.isDrawer = p.id === firstPlayer.id; });
+
+  io.to(room.id).emit('game-started', {
+    totalRounds: shuffled.length,
+    mode: 'chain',
+    players: room.players.map(p => ({ id: p.id, name: p.name, score: p.score })),
+  });
+
+  io.to(room.id).emit('chat-message', {
+    type: 'system',
+    message: `🔗 接龙模式开始！${shuffled.length}人接龙`,
+  });
+
+  io.to(firstPlayer.id).emit('chain-draw-phase', {
+    prompt: word,
+    promptType: 'word',
+    stepNumber: 1,
+    totalSteps: shuffled.length,
+  });
+
+  io.to(room.id).except(firstPlayer.id).emit('chain-waiting', {
+    currentPlayer: firstPlayer.name,
+    step: 1,
+    total: shuffled.length,
+    message: `${firstPlayer.name} 正在画画...`,
+  });
+
+  io.to(room.id).emit('players-update', {
+    players: room.players.map(p => ({ id: p.id, name: p.name, score: p.score, isHost: p.isHost, isDrawer: p.isDrawer, connected: p.connected })),
+  });
+
+  console.log(`[接龙] ${room.id} 开始，首位: ${firstPlayer.name}，词: ${word}`);
+}
+
+function nextChainStep(room) {
+  if (!room.chain) return;
+  room.chain.currentIndex++;
+
+  const chain = room.chain;
+  const order = chain.playerOrder;
+
+  // 链条结束：所有玩家都参与过了
+  if (chain.currentIndex >= order.length) {
+    revealChain(room);
+    return;
+  }
+
+  const currentPlayerId = order[chain.currentIndex];
+
+  // AI 玩家处理
+  if (currentPlayerId && currentPlayerId.startsWith('__ai_')) {
+    const aiPlayer = chain.players.find(p => p.id === currentPlayerId);
+    if (!aiPlayer) { chain.currentIndex++; return nextChainStep(room); }
+    const prevStep2 = chain.steps[chain.steps.length - 1];
+    const aiGuess = aiGenerateGuess(chain, room.customWords || null);
+    chain.steps.push({ type: 'guess', playerId: aiPlayer.id, playerName: aiPlayer.name, data: aiGuess });
+    io.to(room.id).emit('chat-message', { type: 'chat', message: aiGuess, from: aiPlayer.name });
+    io.to(room.id).emit('chat-message', { type: 'system', message: `🤖 ${aiPlayer.name} 猜：${aiGuess}` });
+    setTimeout(() => nextChainStep(room), 2000);
+    return;
+  }
+
+  const currentPlayer = room.players.find(p => p.id === currentPlayerId);
+  if (!currentPlayer || !currentPlayer.connected) {
+    // 跳过离线玩家
+    chain.currentIndex++;
+    if (chain.currentIndex >= order.length) { revealChain(room); return; }
+    return nextChainStep(room);
+  }
+
+  const prevStep = chain.steps[chain.steps.length - 1];
+  const isDrawStep = prevStep.type === 'guess' || prevStep.type === 'word';
+
+  if (isDrawStep) {
+    // 当前玩家看到上一个猜测，要画出来
+    const prompt = prevStep.type === 'word' ? prevStep.data : prevStep.data;
+    currentPlayer.isDrawer = true;
+    chain.currentGuesser = null;
+
+    io.to(currentPlayer.id).emit('chain-draw-phase', {
+      prompt: prompt,
+      promptType: prevStep.type === 'word' ? 'word' : 'guess',
+      stepNumber: chain.currentIndex + 1,
+      totalSteps: order.length,
+    });
+    io.to(room.id).except(currentPlayer.id).emit('chain-waiting', {
+      currentPlayer: currentPlayer.name,
+      step: chain.currentIndex + 1,
+      total: order.length,
+      message: `${currentPlayer.name} 正在根据「${prevStep.type === 'word' ? '原词' : '猜测'}」画画...`,
+    });
+    io.to(room.id).emit('players-update', {
+      players: room.players.map(p => ({ id: p.id, name: p.name, score: p.score, isHost: p.isHost, isDrawer: p.isDrawer, connected: p.connected })),
+    });
+  } else {
+    // 当前玩家看到上一张画，要猜词
+    const prevDraw = prevStep; // it's a draw step
+    currentPlayer.isDrawer = false;
+    chain.currentGuesser = currentPlayer.id;
+
+    io.to(currentPlayer.id).emit('chain-guess-phase', {
+      imageData: prevDraw.data,
+      stepNumber: chain.currentIndex + 1,
+      totalSteps: order.length,
+    });
+    io.to(room.id).except(currentPlayer.id).emit('chain-waiting', {
+      currentPlayer: currentPlayer.name,
+      step: chain.currentIndex + 1,
+      total: order.length,
+      message: `${currentPlayer.name} 正在猜画...`,
+    });
+  }
+}
+
+function revealChain(room) {
+  room.status = 'chain-reveal';
+  room.players.forEach(p => { p.isDrawer = false; });
+
+  io.to(room.id).emit('chain-reveal', {
+    steps: room.chain.steps,
+    playerOrder: room.chain.playerOrder,
+    originalWord: room.chain.originalWord,
+  });
+
+  io.to(room.id).emit('chat-message', {
+    type: 'system',
+    message: `🎬 接龙结束！来看看链条吧 → 原词：「${room.chain.originalWord}」`,
+  });
+
+  // 30秒后自动回到等待状态
+  room.timer = setTimeout(() => {
+    room.status = 'waiting';
+    room.chain = null;
+    room.players.forEach(p => { p.isDrawer = false; });
+    io.to(room.id).emit('chain-finished');
+    io.to(room.id).emit('chat-message', {
+      type: 'system',
+      message: '🔗 接龙结束，房主可以开始新一轮',
+    });
+  }, 30000);
+
+  console.log(`[接龙] ${room.id} 揭示链条，${room.chain.steps.length}步`);
+}
+
+function aiGenerateGuess(chain, customWords) {
+  const pool = customWords && customWords.length >= 10 ? customWords : allWords;
+  // 30% 概率猜对（故意搞笑偏离更接近真实体验）
+  if (Math.random() < 0.3 && chain.steps.length > 0) {
+    const firstStep = chain.steps[0];
+    if (firstStep && firstStep.data) return firstStep.data;
+  }
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 // ============ 定期清理僵尸房间 ============
 setInterval(() => {
   const now = Date.now();
@@ -765,7 +1015,7 @@ const SERVER_URL = (LOCAL_IP !== 'localhost' && !LOCAL_IP.startsWith('10.') && !
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`
 ╔══════════════════════════════════════════╗
-║        🎨 你画我猜 游戏服务器  v4.0       ║
+║        🎨 你画我猜 游戏服务器  v5.0       ║
 ║                                          ║
 ║   本机访问: http://localhost:${PORT}         ║
 ║   手机访问: http://${LOCAL_IP}:${PORT}     ║

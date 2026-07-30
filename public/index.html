@@ -41,7 +41,7 @@
   <div id="lobby-screen" class="screen active">
     <div class="lobby-container">
       <h1 class="logo">🎨 你画我猜</h1>
-      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v4.2</span></p>
+      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v5.0</span></p>
       <button id="theme-toggle" class="theme-toggle" title="切换主题">🌓</button>
 
       <div class="form-group">
@@ -100,6 +100,13 @@
 
       <!-- Canvas -->
       <canvas id="draw-canvas"></canvas>
+      <!-- 接龙提交按钮 -->
+      <button id="chain-submit-btn" class="btn btn-accent btn-block hidden" style="margin-top:8px">✅ 提交画作</button>
+      <!-- 接龙猜词面板 -->
+      <div id="chain-guess-panel" class="hidden" style="display:flex;gap:8px;margin-top:8px">
+        <input id="chain-guess-input" type="text" placeholder="输入你猜的词..." maxlength="20" autocomplete="off" style="flex:1">
+        <button id="chain-guess-submit-btn" class="btn btn-primary">提交</button>
+      </div>
     </div>
 
     <!-- 工具栏（画者可见 / 等待时所有人可见） -->
@@ -152,14 +159,31 @@
             <button class="mode-btn active" data-mode="classic">🎨 经典</button>
             <button class="mode-btn" data-mode="speed">⚡ 快速</button>
             <button class="mode-btn" data-mode="blind">🙈 盲画</button>
+            <button class="mode-btn" data-mode="chain">🔗 接龙</button>
           </div>
           <p id="mode-desc" class="mode-desc">经典模式：轮流画词猜词，60秒一回合</p>
         </div>
         <p id="waiting-player-count" class="waiting-count-sm">当前 1 人（至少需要 2 人）</p>
         <p class="waiting-doodle-hint-sm">💡 等待时可以随意涂鸦</p>
+        <!-- 自定义词库 -->
+        <div class="custom-words-section">
+          <button id="custom-words-toggle" class="btn btn-sm btn-secondary btn-block" style="font-size:0.75rem">📝 自定义词库 ▸</button>
+          <div id="custom-words-panel" class="hidden" style="margin-top:8px">
+            <textarea id="custom-words-input" placeholder="每行一个词，至少10个&#10;例如：&#10;苹果&#10;香蕉&#10;西瓜&#10;..." rows="4" style="width:100%;border-radius:8px;border:1px solid var(--solo-border);padding:8px;font-size:0.8rem;background:var(--solo-bg);color:var(--solo-text);resize:vertical"></textarea>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <button id="custom-words-save" class="btn btn-sm btn-primary" style="flex:1">保存词库</button>
+              <button id="custom-words-share" class="btn btn-sm btn-secondary">📋 分享</button>
+              <button id="custom-words-load" class="btn btn-sm btn-secondary">📥 加载</button>
+            </div>
+            <input id="custom-words-code" type="text" placeholder="粘贴词包码..." style="width:100%;margin-top:4px;border-radius:6px;border:1px solid var(--solo-border);padding:6px;font-size:0.75rem;background:var(--solo-bg);color:var(--solo-text)">
+          </div>
+        </div>
         <button id="start-game-btn" class="btn btn-primary btn-block hidden">🎮 开始游戏</button>
       </div>
     </div>
+
+    <!-- 接龙揭晓面板 -->
+    <div id="chain-reveal-panel" class="chain-reveal-panel hidden"></div>
 
     <!-- 底部操作区（游戏中可见） -->
     <div id="bottom-area">
@@ -311,6 +335,16 @@
         <button id="solo-clear-btn" class="btn btn-sm btn-secondary">🗑 清空</button>
         <button id="solo-replay-btn" class="btn btn-sm btn-accent" disabled>▶ 回放</button>
         <button id="solo-save-btn" class="btn btn-sm btn-primary">💾 保存</button>
+      </div>
+      <!-- 每日挑战 -->
+      <div class="solo-row solo-daily hidden" id="solo-daily-bar">
+        <span class="solo-label">📅 今日挑战：<b id="daily-word"></b></span>
+        <button id="daily-submit-btn" class="btn btn-sm btn-accent">提交作品</button>
+        <button id="daily-cancel-btn" class="btn btn-sm btn-secondary">退出挑战</button>
+      </div>
+      <!-- 成就展示 -->
+      <div id="achievements-badge" class="achievements-badge hidden" title="成就">
+        <span id="achievements-count">0</span>🏆
       </div>
     </div>
   </div>
