@@ -262,8 +262,11 @@ input[type="text"]:focus{border-color:var(--primary)}
 /* 每日挑战 */
 .solo-daily{background:linear-gradient(135deg,rgba(255,152,0,0.1),rgba(255,87,34,0.05));border:1px solid #FF9800;border-radius:10px;padding:10px 12px;gap:8px;align-items:center;flex-wrap:wrap}
 .solo-daily.hidden{display:none}
-.btn-daily{border-radius:10px;padding:14px;font-size:1rem;font-weight:600;cursor:pointer;transition:all 0.2s}
+.btn-daily{display:flex;align-items:center;gap:8px;border-radius:12px;padding:10px 14px;font-size:0.95rem;font-weight:600;cursor:pointer;transition:all 0.2s;border:none;width:100%;justify-content:center}
 .btn-daily:active{transform:scale(0.96)}
+.daily-btn-icon{font-size:1.3rem}
+.daily-btn-text{flex:0 0 auto}
+.daily-btn-word{font-size:0.75rem;opacity:0.8;background:rgba(255,255,255,0.2);padding:2px 8px;border-radius:10px}
 /* 成就 */
 .achievements-badge{position:fixed;top:10px;right:10px;z-index:200;background:var(--card);border:2px solid #FFD700;border-radius:20px;padding:4px 10px;display:flex;align-items:center;gap:4px;font-size:0.8rem;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
 .achievements-badge.hidden{display:none}

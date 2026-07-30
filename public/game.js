@@ -1087,7 +1087,7 @@ function soloFloodFill(wx,wy){
   if(cmatch(fc.r,fc.g,fc.b,255,tr,tg,tb,ta,30))return;
   var stack=[[px,py]],visited=new Uint8Array(w*h),t=40,count=0;
   while(stack.length>0&&count<w*h){var p=stack.pop(),x=p[0],y=p[1];if(x<0||x>=w||y<0||y>=h)continue;var vi=y*w+x;if(visited[vi])continue;var di=vi*4;if(!cmatch(data[di],data[di+1],data[di+2],data[di+3],tr,tg,tb,ta,t))continue;visited[vi]=1;data[di]=fc.r;data[di+1]=fc.g;data[di+2]=fc.b;data[di+3]=255;stack.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);count++;}
-  soloCtx.putImageData(imageData,0,0);showToast('已填充（填充不可撤销，缩放/撤销后填充会消失）');
+  soloCtx.putImageData(imageData,0,0);showToast('已填充（缩放后消失）');
 }
 function soloPickColor(wx,wy){
   var w=soloCanvas.width,dpr=window.devicePixelRatio||1;
@@ -1486,15 +1486,15 @@ if(eb)eb.addEventListener('click',function(){soloImmersed=false;var t=dq('#solo-
 soloCanvas.addEventListener('click',function(e){if(!soloImmersed)return;var t=dq('#solo-top-bar');if(t)t.classList.remove('immersed');var b=dq('#solo-toolbar');if(b)b.classList.remove('immersed');var eb=dq('#solo-exit-immerse');if(eb)eb.classList.remove('hidden');clearTimeout(soloImmersedTimeout);soloImmersedTimeout=setTimeout(function(){if(soloImmersed){var t2=dq('#solo-top-bar');if(t2)t2.classList.add('immersed');var b2=dq('#solo-toolbar');if(b2)b2.classList.add('immersed');}},2000);});
 
 // entry
-soloModeBtn.addEventListener('click',function(){lobbyScreen.classList.remove('active');soloScreen.classList.add('active');soloStrokes=[];soloUndoStack=[];soloCamX=0;soloCamY=0;soloCamZoom=1;soloImmersed=false;soloToolbarCollapsed=false;rainbowHue=Math.random()*360;soloSessionStart=Date.now();soloReplayMode=false;soloReplayPaused=false;if(soloReplayTimer){cancelAnimationFrame(soloReplayTimer);soloReplayTimer=null;}var rb=dq('#solo-replay-bar');if(rb)rb.classList.add('hidden');soloScreen.classList.remove('immersed-full');var t=dq('#solo-top-bar');if(t)t.classList.remove('immersed');var tb=dq('#solo-toolbar');if(tb){tb.classList.remove('immersed');tb.classList.remove('collapsed');}var eb=dq('#solo-exit-immerse');if(eb)eb.classList.add('hidden');var bt=dq('#solo-toggle-toolbar');if(bt)bt.textContent='▼';initSoloCanvas();updateUndoRedoBtns();updateZoomBadge();});
-soloBackBtn.addEventListener('click',function(){soloScreen.classList.remove('active');lobbyScreen.classList.add('active');soloIsPanMode=false;soloPanBtn.classList.remove('active');});
+soloModeBtn.addEventListener('click',function(){lobbyScreen.classList.remove('active');soloScreen.classList.add('active');isDailyMode=false;if(dailyBar)dailyBar.classList.add('hidden');resetSoloState();initSoloCanvasSafe();});
+soloBackBtn.addEventListener('click',function(){isDailyMode=false;if(dailyBar)dailyBar.classList.add('hidden');resetSoloState();soloScreen.classList.remove('active');lobbyScreen.classList.add('active');});
 window.addEventListener('resize',function(){if(soloScreen.classList.contains('active'))initSoloCanvas();});
 window.addEventListener('orientationchange',function(){if(soloScreen.classList.contains('active'))setTimeout(initSoloCanvas,300);});
 
 // 主题切换
 (function(){var b=document.querySelector('#theme-toggle');if(b)b.addEventListener('click',function(){var h=document.documentElement;var t=h.getAttribute('data-theme')==='dark'?'light':'dark';h.setAttribute('data-theme',t);localStorage.setItem('solo-theme',t);});})();
 
-// ============ 每日挑战 v5.0 ============
+// ============ 每日挑战 v6.0 (fix) ============
 var dailyBar = $('#solo-daily-bar'), dailyWordEl = $('#daily-word'), dailySubmitBtn = $('#daily-submit-btn');
 var dailyCancelBtn = $('#daily-cancel-btn'), isDailyMode = false, dailyWord = '';
 
@@ -1507,77 +1507,100 @@ function getDailyWord(){
   return easyWords[seed % easyWords.length];
 }
 
+function resetSoloState(){
+  soloStrokes = []; soloUndoStack = [];
+  soloCamX = 0; soloCamY = 0; soloCamZoom = 1;
+  soloImmersed = false; soloToolbarCollapsed = false;
+  soloIsPanMode = false; soloShapeStart = null; soloShapeSnapshot = null;
+  rainbowHue = Math.random()*360;
+  soloSessionStart = Date.now();
+  soloReplayMode = false; soloReplayPaused = false;
+  if(soloReplayTimer){ cancelAnimationFrame(soloReplayTimer); soloReplayTimer = null; }
+  var rb = dq('#solo-replay-bar'); if(rb) rb.classList.add('hidden');
+  soloScreen.classList.remove('immersed-full');
+  var t = dq('#solo-top-bar'); if(t) t.classList.remove('immersed');
+  var tb = dq('#solo-toolbar'); if(tb){ tb.classList.remove('immersed'); tb.classList.remove('collapsed'); }
+  var eb = dq('#solo-exit-immerse'); if(eb) eb.classList.add('hidden');
+  var bt = dq('#solo-toggle-toolbar'); if(bt) bt.textContent = '▼';
+  soloPanBtn.classList.remove('active');
+  soloCanvas.style.cursor = 'crosshair';
+  // 清除画笔和工具选中状态，重置为首选画笔
+  dq('#solo-brushes').querySelectorAll('.solo-brush-btn').forEach(function(b){b.classList.remove('active');});
+  dq('#solo-tools').querySelectorAll('.solo-tool-btn').forEach(function(b){b.classList.remove('active');});
+  var firstBrush = dq('#solo-brushes').querySelector('.solo-brush-btn');
+  if(firstBrush){ firstBrush.classList.add('active'); soloBrush = firstBrush.dataset.brush; }
+}
+
+function initSoloCanvasSafe(){
+  // 用 rAF 确保 DOM 布局完成后再初始化画布
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){
+      initSoloCanvas();
+      updateUndoRedoBtns();
+      updateZoomBadge();
+    });
+  });
+}
+
 function enterDailyMode(){
+  if(isDailyMode) return;
+  resetSoloState();
   dailyWord = getDailyWord();
   isDailyMode = true;
   if(dailyBar) dailyBar.classList.remove('hidden');
   if(dailyWordEl) dailyWordEl.textContent = dailyWord;
-  soloStrokes = []; soloUndoStack = [];
-  soloCamX = 0; soloCamY = 0; soloCamZoom = 1;
-  soloSessionStart = Date.now(); soloReplayMode = false;
-  initSoloCanvas(); updateUndoRedoBtns();
+  initSoloCanvasSafe();
   showToast('📅 今日挑战：' + dailyWord);
 }
 
 function exitDailyMode(){
   isDailyMode = false;
   if(dailyBar) dailyBar.classList.add('hidden');
-  soloStrokes = []; soloUndoStack = [];
-  soloCamX = 0; soloCamY = 0; soloCamZoom = 1;
-  initSoloCanvas(); updateUndoRedoBtns();
+  resetSoloState();
+  initSoloCanvasSafe();
   showToast('已退出每日挑战');
 }
 
 function submitDailyWork(){
-  if(!soloStrokes.length){ showToast('先画点东西吧'); return; }
-  var dataUrl = soloCanvas.toDataURL('image/png');
-  var dateKey = new Date().toISOString().slice(0,10);
-  var gallery = {};
-  try { gallery = JSON.parse(localStorage.getItem('daily-gallery') || '{}'); } catch(e){}
-  gallery[dateKey] = { word: dailyWord, image: dataUrl, time: Date.now() };
-  try { localStorage.setItem('daily-gallery', JSON.stringify(gallery)); } catch(e){
-    showToast('保存失败，画布太大了');
-    return;
+  if(!soloStrokes || !soloStrokes.length){ showToast('⚠️ 先画点东西再提交'); return; }
+  try {
+    var dataUrl = soloCanvas.toDataURL('image/png');
+    var dateKey = new Date().toISOString().slice(0,10);
+    var gallery = {};
+    try { gallery = JSON.parse(localStorage.getItem('daily-gallery') || '{}'); } catch(e){}
+    gallery[dateKey] = { word: dailyWord, image: dataUrl, time: Date.now() };
+    localStorage.setItem('daily-gallery', JSON.stringify(gallery));
+    trackAchievement('daily-submit');
+    showToast('✅ 作品已提交！今日挑战完成');
+    exitDailyMode();
+  } catch(e){
+    showToast('❌ 保存失败，请重试');
+    console.error('submitDailyWork error:', e);
   }
-  trackAchievement('daily-submit');
-  showToast('✅ 作品已提交！今日挑战完成');
-  exitDailyMode();
 }
 
-if(dailySubmitBtn) dailySubmitBtn.addEventListener('click', submitDailyWork);
-if(dailyCancelBtn) dailyCancelBtn.addEventListener('click', exitDailyMode);
-
-// 进入单人模式时检测是否是每日挑战
-(function(){
-  var origSoloEntry = soloModeBtn.onclick;
-  // 在 lobby 上加每日挑战入口
-  var dailyEntryBtn = document.createElement('button');
-  dailyEntryBtn.className = 'btn btn-daily btn-block';
-  dailyEntryBtn.textContent = '📅 每日挑战';
-  dailyEntryBtn.style.cssText = 'margin-top:8px;background:linear-gradient(135deg,#FF9800,#FF5722);color:#fff;border:none';
-  dailyEntryBtn.addEventListener('click', function(){
+// 首页每日挑战按钮
+var dailyChallengeBtn = $('#daily-challenge-btn');
+var dailyBtnWord = $('#daily-btn-word');
+if(dailyChallengeBtn){
+  // 显示今天的词
+  if(dailyBtnWord) dailyBtnWord.textContent = getDailyWord();
+  dailyChallengeBtn.addEventListener('click', function(){
     lobbyScreen.classList.remove('active');
     soloScreen.classList.add('active');
-    soloStrokes = []; soloUndoStack = [];
-    soloCamX = 0; soloCamY = 0; soloCamZoom = 1;
-    soloImmersed = false; soloToolbarCollapsed = false;
-    rainbowHue = Math.random()*360;
-    soloSessionStart = Date.now();
-    soloReplayMode = false; soloReplayPaused = false;
-    if(soloReplayTimer){ cancelAnimationFrame(soloReplayTimer); soloReplayTimer = null; }
-    var rb = dq('#solo-replay-bar'); if(rb) rb.classList.add('hidden');
-    soloScreen.classList.remove('immersed-full');
-    var t = dq('#solo-top-bar'); if(t) t.classList.remove('immersed');
-    var tb = dq('#solo-toolbar'); if(tb){ tb.classList.remove('immersed'); tb.classList.remove('collapsed'); }
-    var eb = dq('#solo-exit-immerse'); if(eb) eb.classList.add('hidden');
-    var bt = dq('#solo-toggle-toolbar'); if(bt) bt.textContent = '▼';
-    enterDailyMode(); updateUndoRedoBtns(); updateZoomBadge();
+    enterDailyMode();
   });
-  // 插在单人创作按钮后面
-  if(soloModeBtn && soloModeBtn.parentNode){
-    soloModeBtn.parentNode.insertBefore(dailyEntryBtn, soloModeBtn.nextSibling);
-  }
-})();
+}
+
+// 每日挑战提交和取消按钮
+if(dailySubmitBtn) dailySubmitBtn.addEventListener('click', function(e){
+  e.preventDefault();
+  submitDailyWork();
+});
+if(dailyCancelBtn) dailyCancelBtn.addEventListener('click', function(e){
+  e.preventDefault();
+  exitDailyMode();
+});
 
 // ============ 成就系统 v5.0 ============
 var achievements = {
