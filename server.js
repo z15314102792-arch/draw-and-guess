@@ -7,7 +7,11 @@ const wordData = require('./words.json');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  maxHttpBufferSize: 5e6, // 5MB max message size (for canvas snapshots)
+  maxHttpBufferSize: 5e6,
+  cors: {
+    origin: ['https://z15314102792-arch.github.io', 'http://localhost:3000', 'http://192.168.1.104:3000'],
+    methods: ['GET', 'POST'],
+  },
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
