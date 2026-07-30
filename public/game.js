@@ -1115,10 +1115,16 @@ function stampBrushTip(ctx,x,y,size,tip){if(!tip)return;var s=tip.width;ctx.draw
 
 function initSoloCanvas(){
   var wrap=dq('#solo-canvas-wrap'),w=wrap.clientWidth,h=wrap.clientHeight;
+  // 兜底：如果容器尺寸还没就绪，用视口尺寸
+  if(!w||!h){w=window.innerWidth;h=window.innerHeight-150;}
   var dpr=window.devicePixelRatio||1;
   soloCanvas.style.width=w+'px';soloCanvas.style.height=h+'px';
   soloCanvas.width=w*dpr;soloCanvas.height=h*dpr;
   soloCachedRect=null;
+  soloCtx.setTransform(dpr,0,0,dpr,0,0);
+  soloCtx.clearRect(0,0,w,h);
+  soloCtx.fillStyle='#FFFFFF';
+  soloCtx.fillRect(0,0,w,h);
   doRedrawAllStrokes();
 }
 function renderStroke(stroke){
@@ -1370,7 +1376,8 @@ soloCanvas.addEventListener('touchstart',function(e){soloCachedRect=null;if(e.to
 soloCanvas.addEventListener('touchmove',function(e){if(e.touches.length===2&&soloPinching){e.preventDefault();soloPinchMove(e);}else if(soloPanning)soloMove(e);else if(!soloPinching)soloMove(e);},{passive:false});
 soloCanvas.addEventListener('touchend',soloEnd);
 soloCanvas.addEventListener('mousedown',soloStart);soloCanvas.addEventListener('mousemove',soloMove);
-soloCanvas.addEventListener('mouseup',soloEnd);soloCanvas.addEventListener('mouseleave',function(e){if(soloDrawing)soloEnd(e);});
+soloCanvas.addEventListener('mouseup',soloEnd);soloCanvas.addEventListener('mouseleave',function(e){cancelSoloOperation();});
+soloCanvas.addEventListener('touchcancel',function(e){cancelSoloOperation();soloPinching=false;soloTwoFinger=false;});
 soloCanvas.addEventListener('wheel',function(e){e.preventDefault();soloCachedRect=null;var rect=soloCanvas.getBoundingClientRect(),mx=e.clientX-rect.left,my=e.clientY-rect.top,nz=Math.max(0.01,Math.min(5,soloCamZoom*(e.deltaY<0?1.1:0.9)));soloCamX=mx-(mx-soloCamX)*(nz/soloCamZoom);soloCamY=my-(my-soloCamY)*(nz/soloCamZoom);soloCamZoom=nz;scheduleRedraw();updateZoomBadge();},{passive:false});
 function updateZoomBadge(){soloZoomBadge.textContent=Math.round(soloCamZoom*100)+'%';}
 
@@ -1505,6 +1512,13 @@ function getDailyWord(){
     '冰淇淋','大象','老虎','长颈鹿','企鹅','海豚','鲸鱼','火箭','帆船','吉他','钢琴','钥匙','蜡烛','雪人',
     '圣诞树','南瓜','饺子','汉堡','披萨','寿司','机器人','恐龙','风车','灯塔','城堡'];
   return easyWords[seed % easyWords.length];
+}
+
+// 紧急清理所有活跃操作（鼠标离开/触摸取消时调用）
+function cancelSoloOperation(){
+  soloDrawing=false;soloLastPos=null;soloPoints=[];
+  soloShapeStart=null;soloShapeSnapshot=null;
+  soloPanning=false;soloLastPanX=0;soloLastPanY=0;
 }
 
 function resetSoloState(){
