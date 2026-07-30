@@ -1713,4 +1713,4 @@ function updateAchievementBadge(){
   }, 2000);
 })();
 
-console.log('🎨 你画我猜 v6.0 - 前端就绪');
+console.log('🎨 你画我猜 v6.1 - 前端就绪');
