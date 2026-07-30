@@ -734,11 +734,28 @@ function beginDrawing(room, drawer) {
     mode: room.mode,
   });
 
-  io.to(room.id).except(drawer.id).emit('round-drawing', {
-    word: room.currentWord.replace(/./g, '＿'),
-    time: room.totalTime,
-    hint: wordLengthHint,
-    mode: room.mode,
+  // 团队模式：队友也看到词
+  if (room.mode === 'team') {
+    room.players.filter(p => p.team === drawer.team && p.id !== drawer.id && p.connected).forEach(teammate => {
+      io.to(teammate.id).emit('round-drawing', {
+        word: room.currentWord,
+        time: room.totalTime,
+        mode: room.mode,
+        isTeammate: true,
+      });
+    });
+  }
+
+  // 发送提示给非队友（团队模式）或所有人（经典模式）
+  const teammates = room.mode === 'team' ? room.players.filter(p => p.team === drawer.team && p.id !== drawer.id).map(p => p.id) : [];
+  const hintTargets = room.players.filter(p => p.id !== drawer.id && !teammates.includes(p.id) && p.connected).map(p => p.id);
+  hintTargets.forEach(pid => {
+    io.to(pid).emit('round-drawing', {
+      word: room.currentWord.replace(/./g, '＿'),
+      time: room.totalTime,
+      hint: wordLengthHint,
+      mode: room.mode,
+    });
   });
 
   io.to(room.id).emit('chat-message', {
