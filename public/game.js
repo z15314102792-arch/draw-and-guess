@@ -921,15 +921,22 @@ soloSaveBtn.addEventListener('click',function(){var a=document.createElement('a'
 function updateUndoRedoBtns(){soloUndoBtn.disabled=!soloStrokes.length;soloRedoBtn.disabled=!soloUndoStack.length;}
 
 // collapse toolbar
-el('#solo-toggle-toolbar').addEventListener('click',function(){soloToolbarCollapsed=!soloToolbarCollapsed;var tb=el('#solo-toolbar');tb.classList.toggle('collapsed',soloToolbarCollapsed);el('#solo-toggle-toolbar').textContent=soloToolbarCollapsed?'▲':'▼';});
+(function(){
+  var btn=document.querySelector('#solo-toggle-toolbar');
+  if(btn)btn.addEventListener('click',function(){soloToolbarCollapsed=!soloToolbarCollapsed;var tb=document.querySelector('#solo-toolbar');if(tb)tb.classList.toggle('collapsed',soloToolbarCollapsed);btn.textContent=soloToolbarCollapsed?'▲':'▼';});
+})();
 
 // immersive mode
-el('#solo-immerse-btn').addEventListener('click',function(){soloImmersed=true;el('#solo-top-bar').classList.add('immersed');el('#solo-toolbar').classList.add('immersed');el('#solo-exit-immerse').classList.remove('hidden');});
-el('#solo-exit-immerse').addEventListener('click',function(){soloImmersed=false;el('#solo-top-bar').classList.remove('immersed');el('#solo-toolbar').classList.remove('immersed');el('#solo-exit-immerse').classList.add('hidden');});
-soloCanvas.addEventListener('click',function(e){if(!soloImmersed)return;el('#solo-top-bar').classList.remove('immersed');el('#solo-toolbar').classList.remove('immersed');el('#solo-exit-immerse').classList.remove('hidden');clearTimeout(soloImmersedTimeout);soloImmersedTimeout=setTimeout(function(){if(soloImmersed){el('#solo-top-bar').classList.add('immersed');el('#solo-toolbar').classList.add('immersed');}},2000);});
+(function(){
+  var ib=document.querySelector('#solo-immerse-btn');
+  var eb=document.querySelector('#solo-exit-immerse');
+  if(ib)ib.addEventListener('click',function(){soloImmersed=true;var t=document.querySelector('#solo-top-bar');if(t)t.classList.add('immersed');var b=document.querySelector('#solo-toolbar');if(b)b.classList.add('immersed');if(eb)eb.classList.remove('hidden');});
+  if(eb)eb.addEventListener('click',function(){soloImmersed=false;var t=document.querySelector('#solo-top-bar');if(t)t.classList.remove('immersed');var b=document.querySelector('#solo-toolbar');if(b)b.classList.remove('immersed');eb.classList.add('hidden');});
+})();
+soloCanvas.addEventListener('click',function(e){if(!soloImmersed)return;var t=document.querySelector('#solo-top-bar');if(t)t.classList.remove('immersed');var b=document.querySelector('#solo-toolbar');if(b)b.classList.remove('immersed');var eb=document.querySelector('#solo-exit-immerse');if(eb)eb.classList.remove('hidden');clearTimeout(soloImmersedTimeout);soloImmersedTimeout=setTimeout(function(){if(soloImmersed){var t2=document.querySelector('#solo-top-bar');if(t2)t2.classList.add('immersed');var b2=document.querySelector('#solo-toolbar');if(b2)b2.classList.add('immersed');}},2000);});
 
 // entry/exit
-soloModeBtn.addEventListener('click',function(){lobbyScreen.classList.remove('active');soloScreen.classList.add('active');soloStrokes=[];soloUndoStack=[];soloCamX=0;soloCamY=0;soloCamZoom=1;soloImmersed=false;soloToolbarCollapsed=false;el('#solo-top-bar').classList.remove('immersed');el('#solo-toolbar').classList.remove('immersed','collapsed');el('#solo-exit-immerse').classList.add('hidden');el('#solo-toggle-toolbar').textContent='▼';initSoloCanvas();updateUndoRedoBtns();updateZoomBadge();});
+soloModeBtn.addEventListener('click',function(){lobbyScreen.classList.remove('active');soloScreen.classList.add('active');soloStrokes=[];soloUndoStack=[];soloCamX=0;soloCamY=0;soloCamZoom=1;soloImmersed=false;soloToolbarCollapsed=false;var t=document.querySelector('#solo-top-bar');if(t)t.classList.remove('immersed');var tb=document.querySelector('#solo-toolbar');if(tb){tb.classList.remove('immersed');tb.classList.remove('collapsed');}var eb=document.querySelector('#solo-exit-immerse');if(eb)eb.classList.add('hidden');var bt=document.querySelector('#solo-toggle-toolbar');if(bt)bt.textContent='▼';initSoloCanvas();updateUndoRedoBtns();updateZoomBadge();});
 soloBackBtn.addEventListener('click',function(){soloScreen.classList.remove('active');lobbyScreen.classList.add('active');soloIsPanMode=false;soloPanBtn.classList.remove('active');});
 window.addEventListener('resize',function(){if(soloScreen.classList.contains('active'))initSoloCanvas();});
 window.addEventListener('orientationchange',function(){if(soloScreen.classList.contains('active'))setTimeout(initSoloCanvas,300);});
