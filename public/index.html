@@ -41,7 +41,7 @@
   <div id="lobby-screen" class="screen active">
     <div class="lobby-container">
       <h1 class="logo">🎨 你画我猜</h1>
-      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v8.5</span></p>
+      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v8.6</span></p>
       <button id="theme-toggle" class="theme-toggle" title="切换主题">🌓</button>
 
       <!-- 每日挑战卡片 -->
@@ -252,7 +252,7 @@
       <button id="solo-back-btn" class="solo-bar-btn" title="返回大厅">←</button>
       <span class="solo-title">🎨 单人创作</span>
       <button id="solo-pan-btn" class="solo-bar-btn" title="拖拽/缩放画布">✋</button>
-      <button id="solo-pigment-btn" class="solo-bar-btn" title="颜料混合模式：三原色叠加混出新颜色">🎨</button>
+      <button id="solo-pigment-btn" class="solo-bar-btn" title="颜料混合模式：黄+青=绿 | 青+品红=蓝 | 品红+黄=红">🎨</button>
       <span class="solo-zoom-badge" id="solo-zoom-badge">100%</span>
       <button id="solo-immerse-btn" class="solo-bar-btn" title="沉浸模式">⛶</button>
     </div>
@@ -261,6 +261,7 @@
     <div id="solo-canvas-wrap">
       <canvas id="solo-canvas"></canvas>
       <div id="solo-zoom-hint" class="solo-zoom-hint hidden">双指缩放 / 双指拖动</div>
+      <div id="solo-hint-viewer" class="solo-hint-viewer"></div>
     </div>
     <button id="solo-toggle-toolbar" class="solo-toggle-toolbar" title="折叠工具栏">▼</button>
     <div id="solo-toolbar">
@@ -295,8 +296,10 @@
           <button class="solo-brush-btn eraser-btn" data-brush="eraser" title="擦除画面内容，还原白色背景"><span class="brush-icon">⌫</span><span class="brush-label">橡皮</span><span class="brush-desc">擦除还原</span></button>
         </div>
       </div>
-      <!-- 辅助工具行 v8.0 -->
+      <!-- 辅助工具行 v8.6 -->
       <div class="solo-row solo-tools-row">
+        <button class="solo-tool-btn" data-tool="select" title="选择/移动贴图（点击选中，拖动移动，Delete删除）">🖱</button>
+        <span class="tool-sep">|</span>
         <button class="solo-tool-btn" data-tool="line" title="直线（拖拽绘制）">📏</button>
         <button class="solo-tool-btn" data-tool="rect" title="矩形（拖拽绘制）">⬜</button>
         <button class="solo-tool-btn" data-tool="circle" title="圆形（拖拽绘制）">⭕</button>
@@ -360,6 +363,18 @@
       <div id="achievements-badge" class="achievements-badge hidden" title="成就">
         <span id="achievements-count">0</span>🏆
       </div>
+    </div>
+    <!-- v8.6 状态栏 -->
+    <div id="solo-status-bar" class="solo-status-bar">
+      <span class="status-item" id="status-tool">✏️ 钢笔</span>
+      <span class="status-sep">|</span>
+      <span class="status-item" id="status-color">⬤ <span id="status-color-name">黑色</span></span>
+      <span class="status-sep">|</span>
+      <span class="status-item" id="status-layer">📑 图层1</span>
+      <span class="status-sep">|</span>
+      <span class="status-item" id="status-mode">🖌 普通</span>
+      <span class="status-sep">|</span>
+      <span class="status-item" id="status-zoom">🔍 100%</span>
     </div>
   </div>
 
