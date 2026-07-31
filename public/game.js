@@ -1359,7 +1359,11 @@ function resetSoloState(){
   var t=dq('#solo-top-bar');if(t)t.classList.remove('immersed');
   var tb=dq('#solo-toolbar');if(tb){tb.classList.remove('immersed');tb.classList.remove('collapsed');}
   var eb=dq('#solo-exit-immerse');if(eb)eb.classList.add('hidden');
-  var bt=dq('#solo-toggle-toolbar');if(bt)bt.textContent='▼';
+  var bt=dq('#solo-toggle-toolbar');
+  if(bt){bt.textContent='▼';
+    // 如果切换按钮还在工具栏内部，移回原位
+    if(bt.parentNode===tb&&tb){tb.parentNode.insertBefore(bt,tb);}
+  }
   soloPanBtn.classList.remove('active');
   var spb=dq('#solo-pigment-btn');if(spb)spb.classList.remove('active');
   soloCanvas.style.cursor='crosshair';
@@ -1394,7 +1398,13 @@ var soloExitImmerse=dq('#solo-exit-immerse');
 if(soloImmerseBtn)soloImmerseBtn.addEventListener('click',function(){
   soloImmersed=true;
   var t=dq('#solo-top-bar');if(t)t.classList.add('immersed');
-  var tb=dq('#solo-toolbar');if(tb){tb.classList.add('immersed');tb.classList.remove('collapsed');}
+  var tb=dq('#solo-toolbar');
+  if(tb){
+    tb.classList.add('immersed');tb.classList.remove('collapsed');
+    // 切换按钮移入工具栏内部（吸附在顶部）
+    var toggle=dq('#solo-toggle-toolbar');
+    if(toggle&&toggle.parentNode!==tb){tb.insertBefore(toggle,tb.firstChild);}
+  }
   soloScreen.classList.add('immersed-full');
   if(soloExitImmerse)soloExitImmerse.classList.remove('hidden');
   setTimeout(function(){initSoloCanvas();},100);
@@ -1403,28 +1413,36 @@ if(soloImmerseBtn)soloImmerseBtn.addEventListener('click',function(){
 if(soloExitImmerse)soloExitImmerse.addEventListener('click',function(){
   soloImmersed=false;
   var t=dq('#solo-top-bar');if(t)t.classList.remove('immersed');
-  var tb=dq('#solo-toolbar');if(tb){tb.classList.remove('immersed');tb.classList.remove('collapsed');}
+  var tb=dq('#solo-toolbar');
+  if(tb){
+    tb.classList.remove('immersed');tb.classList.remove('collapsed');
+    // 切换按钮移回原位（canvas和toolbar之间）
+    var toggle=dq('#solo-toggle-toolbar');
+    if(toggle&&toggle.parentNode===tb){tb.parentNode.insertBefore(toggle,tb);}
+  }
   soloScreen.classList.remove('immersed-full');
   soloExitImmerse.classList.add('hidden');
   setTimeout(function(){initSoloCanvas();},100);
 });
 // 工具栏折叠
 var soloToggleToolbar=dq('#solo-toggle-toolbar');
-if(soloToggleToolbar)soloToggleToolbar.addEventListener('click',function(){
+if(soloToggleToolbar)soloToggleToolbar.addEventListener('click',function(e){
+  e.stopPropagation();
   soloToolbarCollapsed=!soloToolbarCollapsed;
   var tb=dq('#solo-toolbar');
   if(tb){
     if(soloToolbarCollapsed){
       if(soloImmersed){tb.classList.add('immersed');}
       else{tb.classList.add('collapsed');}
-      soloToggleToolbar.textContent='▲';
+      soloToggleToolbar.textContent='▼';
     }else{
       tb.classList.remove('collapsed');
       tb.classList.remove('immersed');
-      soloToggleToolbar.textContent='▼';
+      soloToggleToolbar.textContent='▲';
     }
   }
 });
+
 
 
 function initSoloCanvas(){
