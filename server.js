@@ -259,7 +259,7 @@ io.on('connection', (socket) => {
     room.round = 0;
     room.totalRounds = connectedPlayers.length * 2;
     room.drawerIndex = -1;
-    room.players.forEach(p => { p.score = 0; p.isDrawer = false; });
+    room.players.forEach(p => { p.score = 0; p.isDrawer = false; p.guessStreak = 0; });
 
     const modeNames = { classic: '经典模式', speed: '快速模式(30秒)', blind: '盲画模式', chain: '接龙模式' };
 
@@ -419,13 +419,26 @@ io.on('connection', (socket) => {
       player.score += guessScore;
       room.correctGuessers.push({ id: player.id, name: player.name });
 
+      // --- 连击系统 v8.0 ---
+      player.guessStreak = (player.guessStreak || 0) + 1;
+      let streakMultiplier = 1;
+      if (player.guessStreak >= 5) streakMultiplier = 3;
+      else if (player.guessStreak >= 3) streakMultiplier = 2;
+      else if (player.guessStreak >= 2) streakMultiplier = 1.5;
+      const streakBonus = Math.floor(guessScore * (streakMultiplier - 1));
+      let bonusMsg = '';
+      if (streakMultiplier > 1) {
+        player.score += streakBonus;
+        bonusMsg = ` 🔥${player.guessStreak}连击 x${streakMultiplier}! (+${streakBonus})`;
+      }
+
       // 告知猜者猜对了
-      socket.emit('guess-result', { correct: true, score: guessScore });
+      socket.emit('guess-result', { correct: true, score: guessScore + streakBonus, streak: player.guessStreak, multiplier: streakMultiplier });
 
       // 广播有人猜对了
       io.to(room.id).emit('chat-message', {
         type: 'correct',
-        message: `🎉 ${player.name} 猜对了！+${guessScore}分`,
+        message: `🎉 ${player.name} 猜对了！+${guessScore}分${bonusMsg}`,
       });
 
       // 给画家加分（每猜对一人 +50）
@@ -448,7 +461,9 @@ io.on('connection', (socket) => {
         endRound(room);
       }
     } else {
-      // 错误猜测 → 广播为普通聊天
+      // 错误猜测 → 重置连击
+      player.guessStreak = 0;
+      // 广播为普通聊天
       io.to(room.id).emit('chat-message', {
         type: 'guess',
         message: trimmedMsg,
@@ -461,6 +476,14 @@ io.on('connection', (socket) => {
         socket.emit('guess-result', { correct: false, hint: '很接近了！' });
       }
     }
+  });
+
+  // ---------- 快捷表情反应 v8.0 ----------
+  socket.on('reaction', ({ emoji }) => {
+    const room = getRoom(socket.data.roomId);
+    const player = room ? getPlayer(room, socket.id) : null;
+    if (!room || !player) return;
+    io.to(room.id).emit('reaction', { emoji, from: player.name, fromId: socket.id });
   });
 
   // ---------- 聊天消息（非猜词）----------
@@ -605,7 +628,7 @@ io.on('connection', (socket) => {
     room.status = 'waiting';
     room.round = 0;
     room.drawerIndex = -1;
-    room.players.forEach(p => { p.score = 0; p.isDrawer = false; });
+    room.players.forEach(p => { p.score = 0; p.isDrawer = false; p.guessStreak = 0; });
     room.totalRounds = room.players.length * 2;
 
     io.to(room.id).emit('game-started', {
@@ -773,25 +796,45 @@ function beginDrawing(room, drawer) {
     }
   }, 1000);
 
-  // AI 猜词
+  // AI 猜词 v8.0: 多轮互动猜词，更像真人
   if (room.hasAI) {
-    room.players.filter(p => p.isAI && !p.isDrawer).forEach(ai => {
-      const delay = 3000 + Math.random() * (room.totalTime * 1000 * 0.6);
-      setTimeout(() => {
-        if (room.status !== 'drawing') return;
-        const isCorrect = Math.random() < 0.25 && room.correctGuessers.length === 0;
-        const guess = isCorrect ? room.currentWord : pickWords(1, room.mode, room.customWords)[0];
-        io.to(room.id).emit('chat-message', { type: 'chat', message: guess, from: ai.name });
-        if (isCorrect) {
-          const score = calculateGuessScore(room.timeRemaining, room.totalTime);
-          ai.score += score;
-          room.correctGuessers.push({ id: ai.id, name: ai.name });
-          io.to(room.id).emit('chat-message', { type: 'correct', message: `🎉 ${ai.name} 猜对了！+${score}分` });
-          const drawer = room.players[room.drawerIndex];
-          if (drawer) drawer.score += 50;
-          io.to(room.id).emit('scoreboard-update', { scoreboard: room.players.map(p => ({ name: p.name, score: p.score })) });
-        }
-      }, delay);
+    const aiPlayers = room.players.filter(p => p.isAI && !p.isDrawer);
+    aiPlayers.forEach(ai => {
+      // 每个 AI 进行 3-5 轮发言
+      const rounds = 3 + Math.floor(Math.random() * 4);
+      for (let r = 0; r < rounds; r++) {
+        const delay = 4000 + r * (room.totalTime * 1000 / (rounds + 1)) + Math.random() * 3000;
+        setTimeout(() => {
+          if (room.status !== 'drawing') return;
+          // 如果有人猜对了，AI 不再猜
+          if (room.correctGuessers.length > 0 && room.correctGuessers.find(g => g.id === ai.id)) return;
+
+          const roll = Math.random();
+          if (roll < 0.2 && room.correctGuessers.length === 0) {
+            // AI 猜对了 (只在还没人猜对时)
+            const score = Math.floor(calculateGuessScore(room.timeRemaining, room.totalTime) * 0.8);
+            ai.score += score;
+            room.correctGuessers.push({ id: ai.id, name: ai.name });
+            io.to(room.id).emit('chat-message', { type: 'correct', message: `🎉 ${ai.name} 猜对了！+${score}分（AI）` });
+            const drawer = room.players[room.drawerIndex];
+            if (drawer) drawer.score += 40;
+            io.to(room.id).emit('scoreboard-update', { scoreboard: room.players.map(p => ({ name: p.name, score: p.score })) });
+          } else if (roll < 0.5) {
+            // AI 发互动评论
+            const comments = [
+              '🤔 让我想想...', '这个东西我见过！', '画得不错啊', '好抽象😅', '我好像看出来了...',
+              '再给点提示呗', '这画风绝了', '原来是这个方向', '继续继续👏', '有点难度...',
+            ];
+            io.to(room.id).emit('chat-message', { type: 'chat', message: comments[Math.floor(Math.random() * comments.length)], from: ai.name });
+          } else {
+            // AI 乱猜一个
+            const fakeGuess = pickWords(1, 'easy', room.customWords)[0];
+            if (fakeGuess && fakeGuess !== room.currentWord) {
+              io.to(room.id).emit('chat-message', { type: 'guess', message: fakeGuess, from: ai.name });
+            }
+          }
+        }, delay);
+      }
     });
   }
 }

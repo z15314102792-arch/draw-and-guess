@@ -257,9 +257,13 @@ function connectSocket() {
   });
 
   // --- 猜词 ---
-  socket.on('guess-result', ({ correct, score, hint }) => {
+  socket.on('guess-result', ({ correct, score, hint, streak, multiplier }) => {
     if (correct) {
       guessInput.disabled = true;
+      let streakHtml = '';
+      if (streak && streak >= 2) {
+        streakHtml = ' <span class="streak-badge">🔥'+streak+'连击 x'+multiplier+'</span>';
+      }
       guessInput.placeholder = '✅ 猜对了！+' + score + '分';
       sendGuessBtn.disabled = true;
       setTimeout(() => { guessInput.disabled = false; guessInput.placeholder = '你已猜对'; sendGuessBtn.disabled = true; }, 1500);
@@ -269,6 +273,14 @@ function connectSocket() {
 
   // --- 聊天 ---
   socket.on('chat-message', (msg) => { addChatMessage(msg.type, msg.message, msg.from); });
+
+  // --- 快捷表情反应 v8.0 ---
+  socket.on('reaction', ({ emoji, from, fromId }) => {
+    showFloatingReaction(emoji, fromId === socket.id);
+    if (fromId !== socket.id) {
+      addChatMessage('system', from + ' ' + emoji);
+    }
+  });
 
   // --- 回合结束 ---
   socket.on('round-end', ({ word, correctGuessers, drawerName, scoreboard }) => {
@@ -684,6 +696,36 @@ sendGuessBtn.addEventListener('click', sendGuess);
 guessInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === 'done' || e.key === 'go') { e.preventDefault(); sendGuess(); }
 });
+
+// ============ 快捷表情反应 v8.0 ============
+$$('.reaction-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const emoji = btn.dataset.emoji;
+    socket.emit('reaction', { emoji });
+    // 本地也显示
+    showFloatingReaction(emoji, true);
+    // 短暂高亮
+    btn.style.transform = 'scale(1.5)';
+    setTimeout(() => { btn.style.transform = ''; }, 200);
+  });
+});
+
+function showFloatingReaction(emoji, isSelf) {
+  const container = $('#floating-reactions');
+  if (!container) return;
+  const el = document.createElement('span');
+  el.className = 'floating-emoji';
+  el.textContent = emoji;
+  // 随机水平位置和偏移
+  const left = 20 + Math.random() * 60; // 20%-80%
+  const bottom = 10 + Math.random() * 30; // 10%-40%
+  el.style.left = left + '%';
+  el.style.bottom = bottom + '%';
+  if (isSelf) el.style.fontSize = '2.5rem';
+  container.appendChild(el);
+  // 动画结束后移除
+  setTimeout(() => { el.remove(); }, 2000);
+}
 
 // ============ Lobby 事件 ============
 createRoomBtn.addEventListener('click', () => {
@@ -1707,4 +1749,4 @@ function updateAchievementBadge(){
   }, 2000);
 })();
 
-console.log('🎨 你画我猜 v8.0 - 前端就绪');
+console.log('🎨 你画我猜 v8.1 - 前端就绪');
