@@ -277,18 +277,22 @@ input[type="text"]:focus{border-color:var(--primary)}
 .layer-eye:hover{border-color:var(--solo-border);background:var(--solo-bg)}
 .layer-add{font-size:1rem;font-weight:700;padding:3px 10px;border-style:dashed}
 .layer-hint{font-size:0.6rem;color:var(--solo-muted);margin-left:4px}
-/* ====== v8.6 提示系统 ====== */
-.solo-hint-viewer{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);padding:6px 16px;background:rgba(0,0,0,0.78);color:#ddd;font-size:12px;border-radius:20px;white-space:nowrap;pointer-events:none;z-index:50;opacity:0;transition:opacity 0.3s}
+/* ====== v8.7 提示浮窗（居中，3秒消失） ====== */
+.solo-hint-viewer{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);padding:12px 28px;background:rgba(0,0,0,0.85);color:#fff;font-size:16px;border-radius:12px;white-space:nowrap;pointer-events:none;z-index:100;opacity:0;transition:opacity 0.4s;box-shadow:0 4px 24px rgba(0,0,0,0.5)}
 .solo-hint-viewer.visible{opacity:1}
-.solo-hint-viewer kbd{display:inline-block;padding:1px 5px;background:rgba(255,255,255,0.18);border-radius:3px;font-family:monospace;font-size:11px;color:#fff;margin:0 2px}
-/* ====== v8.6 状态栏 ====== */
+.solo-hint-viewer kbd{display:inline-block;padding:2px 8px;background:rgba(255,255,255,0.22);border-radius:4px;font-family:monospace;font-size:14px;color:#fff;margin:0 3px}
+/* ====== v8.7 状态栏 ====== */
 .solo-status-bar{display:flex;align-items:center;gap:6px;padding:3px 10px;background:var(--solo-bg);border-top:1px solid var(--solo-border);font-size:11px;color:var(--solo-muted);flex-shrink:0;overflow:hidden}
 .solo-status-bar .status-item{display:flex;align-items:center;gap:3px;white-space:nowrap}
 .solo-status-bar .status-sep{color:var(--solo-border);font-size:10px}
-/* ====== v8.6 图层排序按钮 ====== */
-.layer-ord-btn{width:20px;height:20px;border:1px solid var(--solo-border);border-radius:3px;background:var(--solo-bg);color:var(--solo-text);font-size:0.55rem;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all 0.12s;flex-shrink:0}
-.layer-ord-btn:hover{border-color:var(--primary);background:rgba(92,107,192,0.12)}
-.layer-ord-btn:active{transform:scale(0.9)}
+/* ====== v8.7 图层+贴图统一列表（拖拽排序） ====== */
+.layer-item-row{transition:transform 0.15s,opacity 0.15s,box-shadow 0.15s;border-radius:6px}
+.layer-item-row:hover{background:rgba(92,107,192,0.06)}
+.layer-item-row:active{cursor:grabbing}
+.layer-eye-inline{transition:opacity 0.15s,transform 0.15s}
+.layer-eye-inline:hover{opacity:1!important;transform:scale(1.2)}
+.layer-del-btn{transition:opacity 0.15s,transform 0.15s}
+.layer-del-btn:hover{opacity:1!important;transform:scale(1.2)}
 /* ====== v8.6 贴图操作手柄 ====== */
 .image-handle{position:absolute;width:10px;height:10px;background:#fff;border:2px solid #1a73e8;border-radius:2px;pointer-events:none;z-index:60}
 .image-rot-handle{position:absolute;width:12px;height:12px;background:#1a73e8;border:2px solid #fff;border-radius:50%;pointer-events:none;z-index:60}
