@@ -41,7 +41,7 @@
   <div id="lobby-screen" class="screen active">
     <div class="lobby-container">
       <h1 class="logo">🎨 你画我猜</h1>
-      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v7.3</span></p>
+      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v8.0</span></p>
       <button id="theme-toggle" class="theme-toggle" title="切换主题">🌓</button>
 
       <!-- 每日挑战卡片 -->
@@ -276,14 +276,16 @@
           <button class="solo-brush-btn eraser-btn" data-brush="eraser" title="擦除画面内容，还原白色背景"><span class="brush-icon">⌫</span><span class="brush-label">橡皮</span><span class="brush-desc">擦除还原</span></button>
         </div>
       </div>
-      <!-- 辅助工具行 -->
+      <!-- 辅助工具行 v8.0 -->
       <div class="solo-row solo-tools-row">
-        <button class="solo-tool-btn" data-tool="line" title="直线">📏</button>
-        <button class="solo-tool-btn" data-tool="rect" title="矩形">⬜</button>
-        <button class="solo-tool-btn" data-tool="circle" title="圆形">⭕</button>
+        <button class="solo-tool-btn" data-tool="line" title="直线（拖拽绘制）">📏</button>
+        <button class="solo-tool-btn" data-tool="rect" title="矩形（拖拽绘制）">⬜</button>
+        <button class="solo-tool-btn" data-tool="circle" title="圆形（拖拽绘制）">⭕</button>
+        <button class="solo-tool-btn" data-tool="triangle" title="三角形（拖拽绘制）">🔺</button>
         <span class="tool-sep">|</span>
-        <button class="solo-tool-btn" data-tool="fill" title="填充">🪣</button>
-        <button class="solo-tool-btn" data-tool="pick" title="取色">💉</button>
+        <button class="solo-tool-btn" data-tool="fill" title="填充（点击封闭区域）">🪣</button>
+        <button class="solo-tool-btn" data-tool="eyedropper" title="取色（点击取色）">💉</button>
+        <button class="solo-tool-btn" data-tool="text" title="文字（点击输入）">📝</button>
       </div>
       <!-- 粗细 -->
       <div class="solo-row">

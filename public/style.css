@@ -192,8 +192,8 @@ input[type="text"]:focus{border-color:var(--primary)}
 #solo-canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0;background:var(--solo-canvas-bg)}
 #solo-canvas{background:#fff;touch-action:none;cursor:crosshair}
 .solo-tools-row{display:flex;align-items:center;gap:6px;padding:0}
-.solo-tools-row .solo-tool-btn{width:30px;height:30px;border:1px solid var(--solo-border);border-radius:6px;background:var(--solo-bg);cursor:pointer;font-size:0.85rem;display:flex;align-items:center;justify-content:center;color:var(--solo-text);transition:all 0.15s}
-.solo-tools-row .solo-tool-btn.active{border-color:#FF9800;box-shadow:0 0 4px rgba(255,152,0,0.3)}
+.solo-tools-row .solo-tool-btn{width:28px;height:28px;border:1px solid var(--solo-border);border-radius:6px;background:var(--solo-bg);cursor:pointer;font-size:0.75rem;display:flex;align-items:center;justify-content:center;color:var(--solo-text);transition:all 0.15s}
+.solo-tools-row .solo-tool-btn.active{border-color:#FF9800;box-shadow:0 0 4px rgba(255,152,0,0.3);background:rgba(255,152,0,0.1)}
 .tool-sep{color:var(--solo-border);font-size:0.8rem;margin:0 2px}
 /* 沉浸模式全屏画布 */
 #solo-screen.immersed-full #solo-canvas-wrap{position:fixed;inset:0;z-index:50}
