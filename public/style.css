@@ -199,9 +199,9 @@ input[type="text"]:focus{border-color:var(--primary)}
 #solo-screen.immersed-full #solo-canvas-wrap{position:fixed;inset:0;z-index:50}
 #solo-screen.immersed-full #solo-canvas{box-shadow:none;border-radius:0}
 /* 沉浸模式：切换箭头固定在底部 */
-#solo-screen.immersed-full .solo-toggle-toolbar{position:fixed;bottom:0;left:0;right:0;z-index:60;background:rgba(0,0,0,0.45);color:#fff;backdrop-filter:blur(4px);height:22px;font-size:0.7rem}
+#solo-screen.immersed-full .solo-toggle-toolbar{position:fixed;top:0;left:0;right:0;z-index:60;background:rgba(0,0,0,0.45);color:#fff;backdrop-filter:blur(4px);height:22px;font-size:0.7rem}
 /* 沉浸模式：工具栏从底部弹出 */
-#solo-screen.immersed-full #solo-toolbar{position:fixed;bottom:22px;left:0;right:0;z-index:55;background:var(--solo-bar);border-radius:8px 8px 0 0;box-shadow:0 -4px 16px rgba(0,0,0,0.2)}
+#solo-screen.immersed-full #solo-toolbar{position:fixed;bottom:0;left:0;right:0;z-index:55;background:var(--solo-bar);border-radius:8px 8px 0 0;box-shadow:0 -4px 16px rgba(0,0,0,0.2)}
 #solo-screen.immersed-full #solo-toolbar.immersed{max-height:0!important;padding-top:0!important;padding-bottom:0!important;border-top:none;overflow:hidden}
 
 .solo-toggle-toolbar{display:block;width:100%;height:18px;border:none;background:var(--solo-bar);color:var(--solo-muted);font-size:0.6rem;cursor:pointer;flex-shrink:0}
