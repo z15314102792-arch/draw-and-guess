@@ -1086,6 +1086,7 @@ let soloStrokes=soloLayers[0].strokes,soloUndoStack=soloLayers[0].undoStack;
 let soloCamX=0,soloCamY=0,soloCamZoom=1,soloTwoFinger=false;
 let soloPinching=false,soloPinchStartDist=0,soloPinchStartZoom=1,soloPinchMidX=0,soloPinchMidY=0;
 let soloPanning=false,soloLastPanX=0,soloLastPanY=0,soloIsPanMode=false;
+let soloPigmentMode=false; // v8.5 颜料混合模式：true=三原色混色（multiply），false=普通叠加
 let brushTipCache=null,brushTipCacheKey='',rainbowHue=0;
 function srand(seed){var x=Math.sin(seed*9301+49297)*233280;return x-Math.floor(x);}
 let soloRafPending=false,soloCachedRect=null;
@@ -1300,7 +1301,10 @@ function renderStroke(stroke){
     ctx.restore();return;
   }
 
-  ctx.globalCompositeOperation=(stroke.brush==='marker'||stroke.brush==='crayon')?'multiply':'source-over';
+  // v8.5: 颜料混合模式 vs 普通叠加 vs 画笔自带 multiply
+  if(stroke.blendMode==='pigment'){ctx.globalCompositeOperation='multiply';}
+  else if(stroke.brush==='marker'||stroke.brush==='crayon'){ctx.globalCompositeOperation='multiply';}
+  else{ctx.globalCompositeOperation='source-over';}
   if(stroke.brush==='glow'){ctx.shadowBlur=stroke.size*2;ctx.shadowColor=stroke.color;}
   var tip=(stroke.brush==='pen'||stroke.brush==='marker'||stroke.brush==='glow')?getBrushTip(stroke.color,stroke.size,hardness,stroke.brush):null;
 
@@ -1383,6 +1387,12 @@ function renderStroke(stroke){
     ctx.restore();return;
   }
   // fill-op 和 text 在 doRedrawAllStrokes 中单独处理，此处跳过
+  // v8.5: 导入的图片
+  if(stroke.brush==='image'&&stroke._img){
+    ctx.globalAlpha=stroke.opacity||1;
+    ctx.drawImage(stroke._img,stroke.imgX,stroke.imgY,stroke.imgW,stroke.imgH);
+    ctx.restore();return;
+  }
   ctx.lineWidth=stroke.size;ctx.strokeStyle=stroke.color;
   if(tip){for(var i=0;i<pts.length;i++)stampBrushTip(ctx,pts[i].x,pts[i].y,stroke.size,tip);for(var i=1;i<pts.length;i++){var dx=pts[i].x-pts[i-1].x,dy=pts[i].y-pts[i-1].y,dist=Math.sqrt(dx*dx+dy*dy);for(var s=1;s<Math.ceil(dist/(stroke.size*0.3));s++){var t=s/Math.ceil(dist/(stroke.size*0.3));stampBrushTip(ctx,pts[i-1].x+dx*t,pts[i-1].y+dy*t,stroke.size,tip);}}}
   else{for(var i=1;i<pts.length;i++){ctx.beginPath();ctx.moveTo(pts[i-1].x,pts[i-1].y);ctx.lineTo(pts[i].x,pts[i].y);ctx.stroke();}}
@@ -1438,7 +1448,7 @@ function soloEnd(e){
     finalizeToolShape(toolStartPoint,pt,activeTool);
     var sd={x1:toolStartPoint.x,y1:toolStartPoint.y,x2:pt.x,y2:pt.y};
     soloUndoStack.length=0;
-    soloStrokes.push({brush:'shape-'+activeTool,color:soloColor,size:soloSize,opacity:soloOpacity,shapeData:sd,points:[toolStartPoint,pt],_seed:Math.floor(Math.random()*100000)});
+    soloStrokes.push({brush:'shape-'+activeTool,color:soloColor,size:soloSize,opacity:soloOpacity,shapeData:sd,points:[toolStartPoint,pt],_seed:Math.floor(Math.random()*100000),blendMode:soloPigmentMode?'pigment':'normal'});
     updateUndoRedoBtns();
     toolDragging=false;toolStartPoint=null;toolPreviewPoint=null;
     return;
@@ -1448,7 +1458,7 @@ function soloEnd(e){
   if(soloPoints.length>=1){
     var pts=soloPoints.length>1?soloPoints.slice():[soloPoints[0],Object.assign({},soloPoints[0])];
     soloUndoStack.length=0;
-    soloStrokes.push({brush:soloBrush,color:soloColor,size:soloSize,opacity:soloOpacity,hardness:soloHardness,points:pts,_hueOffset:rainbowHue,_seed:Math.floor(Math.random()*100000)});
+    soloStrokes.push({brush:soloBrush,color:soloColor,size:soloSize,opacity:soloOpacity,hardness:soloHardness,points:pts,_hueOffset:rainbowHue,_seed:Math.floor(Math.random()*100000),blendMode:soloPigmentMode?'pigment':'normal'});
     updateUndoRedoBtns();rainbowHue=(rainbowHue+37)%360;
   }
   soloPoints=[];
@@ -1462,7 +1472,10 @@ function drawLiveSegment(from,to){
   if(soloBrush==='neon'){ctx.shadowBlur=soloSize*4;ctx.shadowColor=soloColor;ctx.strokeStyle='#ffffff';ctx.lineWidth=soloSize*0.4;ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(to.x,to.y);ctx.stroke();ctx.shadowBlur=soloSize*2;ctx.strokeStyle=soloColor;ctx.lineWidth=soloSize;ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(to.x,to.y);ctx.stroke();ctx.restore();return;}
   if(soloBrush==='pixel'){var px=Math.round(to.x/soloSize)*soloSize,py=Math.round(to.y/soloSize)*soloSize;ctx.fillStyle=soloColor;ctx.globalAlpha=soloOpacity;ctx.fillRect(px-soloSize/2,py-soloSize/2,soloSize,soloSize);var fpx=Math.round(from.x/soloSize)*soloSize,fpy=Math.round(from.y/soloSize)*soloSize;ctx.fillRect(fpx-soloSize/2,fpy-soloSize/2,soloSize,soloSize);ctx.restore();return;}
   if(soloBrush==='glow'){ctx.shadowBlur=soloSize*2;ctx.shadowColor=soloColor;}
-  ctx.globalCompositeOperation=(soloBrush==='marker'||soloBrush==='crayon')?'multiply':'source-over';
+  // v8.5: 颜料混合模式
+  if(soloPigmentMode){ctx.globalCompositeOperation='multiply';}
+  else if(soloBrush==='marker'||soloBrush==='crayon'){ctx.globalCompositeOperation='multiply';}
+  else{ctx.globalCompositeOperation='source-over';}
   if(soloBrush==='spray'){var n=Math.floor(soloSize*3);for(var j=0;j<n;j++){var a=Math.random()*Math.PI*2,d=Math.random()*soloSize*2;ctx.globalAlpha=soloOpacity*(0.08+Math.random()*0.25);ctx.fillStyle=soloColor;ctx.beginPath();ctx.arc(to.x+Math.cos(a)*d,to.y+Math.sin(a)*d,0.6+Math.random()*soloSize*0.18,0,Math.PI*2);ctx.fill();}ctx.restore();return;}
   if(soloBrush==='water'||soloBrush==='pencil'||soloBrush==='crayon'||soloBrush==='calligraphy'){ctx.lineWidth=soloSize;ctx.strokeStyle=soloColor;ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(to.x,to.y);ctx.stroke();ctx.restore();return;}
   // --- 新画笔 v3.5 实时预览 ---
@@ -1553,6 +1566,13 @@ dq('#solo-brushes').addEventListener('click',function(e){var btn=e.target.closes
 // tool selector v8.0
 var toolsRow=dq('.solo-tools-row');if(toolsRow)toolsRow.addEventListener('click',function(e){var btn=e.target.closest('.solo-tool-btn');if(!btn)return;toolsRow.querySelectorAll('.solo-tool-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');activeTool=btn.dataset.tool;toolStartPoint=null;toolDragging=false;toolPreviewPoint=null;soloPanning=false;doRedrawAllStrokes();dq('#solo-brushes').querySelectorAll('.solo-brush-btn').forEach(function(b){b.classList.remove('active');});soloCanvas.style.cursor=activeTool==='fill'||activeTool==='eyedropper'||activeTool==='text'?'cell':'crosshair';if(soloIsPanMode){soloIsPanMode=false;soloPanBtn.classList.remove('active');}});
 soloPanBtn.addEventListener('click',function(){soloIsPanMode=!soloIsPanMode;soloPanBtn.classList.toggle('active',soloIsPanMode);soloCanvas.style.cursor=soloIsPanMode?'grab':'crosshair';});
+// v8.5 颜料混合模式切换
+var soloPigmentBtn=dq('#solo-pigment-btn');
+if(soloPigmentBtn)soloPigmentBtn.addEventListener('click',function(){
+  soloPigmentMode=!soloPigmentMode;
+  soloPigmentBtn.classList.toggle('active',soloPigmentMode);
+  showToast(soloPigmentMode?'🎨 颜料模式：颜色叠加会混合出新颜色（红+黄=橙）':'🖌 普通模式：颜色直接覆盖叠加');
+});
 soloSizeSlider.addEventListener('input',function(){soloSize=+soloSizeSlider.value;soloSizeVal.textContent=soloSize;});
 soloOpacitySlider.addEventListener('input',function(){soloOpacity=+soloOpacitySlider.value/100;soloOpacityVal.textContent=soloOpacitySlider.value;});
 soloSmoothSlider.addEventListener('input',function(){soloHardness=1-+soloSmoothSlider.value/100;soloSmoothVal.textContent=soloSmoothSlider.value;brushTipCache=null;});
@@ -1562,6 +1582,42 @@ soloUndoBtn.addEventListener('click',function(){if(!soloStrokes.length)return;so
 soloRedoBtn.addEventListener('click',function(){if(!soloUndoStack.length)return;soloStrokes.push(soloUndoStack.pop());invalidateFillCaches();doRedrawAllStrokes();updateUndoRedoBtns();});
 soloClearBtn.addEventListener('click',function(){if(!soloStrokes.length)return;if(confirm('确定清空当前图层吗？')){soloStrokes.length=0;soloUndoStack.length=0;doRedrawAllStrokes();updateUndoRedoBtns();}});
 soloSaveBtn.addEventListener('click',function(){var a=document.createElement('a');a.download='画作_'+new Date().toISOString().slice(0,10)+'.png';a.href=soloCanvas.toDataURL('image/png');a.click();showToast('已保存');});
+// v8.5 导入图片/贴纸
+var soloImportBtn=dq('#solo-import-btn'),soloImportFile=dq('#solo-import-file');
+if(soloImportBtn&&soloImportFile){
+  soloImportBtn.addEventListener('click',function(){soloImportFile.click();});
+  soloImportFile.addEventListener('change',function(e){
+    var file=e.target.files[0];
+    if(!file)return;
+    var reader=new FileReader();
+    reader.onload=function(ev){
+      var img=new Image();
+      img.onload=function(){
+        // 缩放到合理大小（不超过画布 60%）
+        var cw=parseFloat(soloCanvas.style.width),ch=parseFloat(soloCanvas.style.height);
+        var maxW=cw*0.6,maxH=ch*0.6;
+        var scale=Math.min(maxW/img.width,maxH/img.height,1);
+        var iw=img.width*scale,ih=img.height*scale;
+        // 放在画布中央（世界坐标）
+        var wx=(cw/2-soloCamX)/soloCamZoom-iw/2,wy=(ch/2-soloCamY)/soloCamZoom-ih/2;
+        // 立即绘制
+        var dpr=window.devicePixelRatio||1;
+        soloCtx.save();soloCtx.setTransform(dpr,0,0,dpr,0,0);
+        soloCtx.translate(soloCamX,soloCamY);soloCtx.scale(soloCamZoom,soloCamZoom);
+        soloCtx.drawImage(img,wx,wy,iw,ih);
+        soloCtx.restore();
+        // 存储为矢量图片笔画（缩放时重绘）
+        soloUndoStack.length=0;
+        var imgStroke={brush:'image',imgX:wx,imgY:wy,imgW:iw,imgH:ih,_img:img,opacity:1};
+        soloStrokes.push(imgStroke);
+        updateUndoRedoBtns();showToast('✅ 已导入贴图（'+Math.round(iw)+'x'+Math.round(ih)+'）');
+      };
+      img.src=ev.target.result;
+    };
+    reader.readAsDataURL(file);
+    soloImportFile.value=''; // 允许重复选同一文件
+  });
+}
 function updateUndoRedoBtns(){soloUndoBtn.disabled=!soloStrokes.length;soloRedoBtn.disabled=!soloUndoStack.length;}
 
 // ============ v8.3 图层管理 ============
@@ -1672,7 +1728,7 @@ function resetSoloState(){
   soloStrokes=soloLayers[0].strokes;soloUndoStack=soloLayers[0].undoStack;
   soloCamX = 0; soloCamY = 0; soloCamZoom = 1;
   soloImmersed = false; soloToolbarCollapsed = false;
-  soloIsPanMode = false; activeTool=null; toolStartPoint=null; toolDragging=false; toolPreviewPoint=null;
+  soloIsPanMode = false; soloPigmentMode = false; activeTool=null; toolStartPoint=null; toolDragging=false; toolPreviewPoint=null;
   rainbowHue = Math.random()*360;
   soloScreen.classList.remove('immersed-full');
   var t = dq('#solo-top-bar'); if(t) t.classList.remove('immersed');
@@ -1680,6 +1736,7 @@ function resetSoloState(){
   var eb = dq('#solo-exit-immerse'); if(eb) eb.classList.add('hidden');
   var bt = dq('#solo-toggle-toolbar'); if(bt) bt.textContent = '▼';
   soloPanBtn.classList.remove('active');
+  var spb=dq('#solo-pigment-btn');if(spb)spb.classList.remove('active');
   soloCanvas.style.cursor = 'crosshair';
   // 清除画笔和工具选中状态
   dq('#solo-brushes').querySelectorAll('.solo-brush-btn').forEach(function(b){b.classList.remove('active');});
@@ -1862,4 +1919,4 @@ function updateAchievementBadge(){
   }, 2000);
 })();
 
-console.log('🎨 你画我猜 v8.4 - 前端就绪');
+console.log('🎨 你画我猜 v8.5 - 前端就绪');

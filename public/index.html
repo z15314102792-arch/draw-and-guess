@@ -41,7 +41,7 @@
   <div id="lobby-screen" class="screen active">
     <div class="lobby-container">
       <h1 class="logo">🎨 你画我猜</h1>
-      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v8.4</span></p>
+      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v8.5</span></p>
       <button id="theme-toggle" class="theme-toggle" title="切换主题">🌓</button>
 
       <!-- 每日挑战卡片 -->
@@ -252,6 +252,7 @@
       <button id="solo-back-btn" class="solo-bar-btn" title="返回大厅">←</button>
       <span class="solo-title">🎨 单人创作</span>
       <button id="solo-pan-btn" class="solo-bar-btn" title="拖拽/缩放画布">✋</button>
+      <button id="solo-pigment-btn" class="solo-bar-btn" title="颜料混合模式：三原色叠加混出新颜色">🎨</button>
       <span class="solo-zoom-badge" id="solo-zoom-badge">100%</span>
       <button id="solo-immerse-btn" class="solo-bar-btn" title="沉浸模式">⛶</button>
     </div>
@@ -335,6 +336,7 @@
           <button class="solo-color-btn" data-color="#3498DB" style="background:#3498DB"></button>
           <button class="solo-color-btn" data-color="#9B59B6" style="background:#9B59B6"></button>
           <button class="solo-color-btn" data-color="#FF6B9D" style="background:#FF6B9D"></button>
+          <button class="solo-color-btn" data-color="#FFFFFF" style="background:#FFFFFF"></button>
           <button class="solo-color-btn" data-color="#8B4513" style="background:#8B4513"></button>
           <input type="color" id="solo-custom-color" class="custom-color-input" value="#000000" title="自定义颜色">
         </div>
@@ -344,8 +346,10 @@
         <button id="solo-undo-btn" class="btn btn-sm btn-secondary" disabled>↩ 撤销</button>
         <button id="solo-redo-btn" class="btn btn-sm btn-secondary" disabled>↪ 重做</button>
         <button id="solo-clear-btn" class="btn btn-sm btn-secondary">🗑 清空</button>
+        <button id="solo-import-btn" class="btn btn-sm btn-secondary">📷 贴图</button>
         <button id="solo-save-btn" class="btn btn-sm btn-primary">💾 保存</button>
       </div>
+      <input type="file" id="solo-import-file" accept="image/*" style="display:none">
       <!-- 每日挑战 -->
       <div class="solo-row solo-daily hidden" id="solo-daily-bar">
         <span class="solo-label">📅 今日挑战：<b id="daily-word"></b></span>
