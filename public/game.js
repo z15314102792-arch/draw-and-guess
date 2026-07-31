@@ -1079,7 +1079,10 @@ function dq(id){return document.querySelector(id);}
 
 let soloBrush='pen',soloColor='#000000',soloSize=3,soloOpacity=1,soloHardness=0.5;
 let soloImmersed=false,soloImmersedTimeout=null,soloToolbarCollapsed=false;
-let soloDrawing=false,soloLastPos=null,soloStrokes=[],soloUndoStack=[],soloPoints=[];
+let soloDrawing=false,soloLastPos=null,soloPoints=[];
+// v8.3 图层系统 — soloStrokes/soloUndoStack 始终指向当前活动图层
+let soloLayers=[{name:'图层1',strokes:[],undoStack:[],visible:true}],soloActiveLayer=0;
+let soloStrokes=soloLayers[0].strokes,soloUndoStack=soloLayers[0].undoStack;
 let soloCamX=0,soloCamY=0,soloCamZoom=1,soloTwoFinger=false;
 let soloPinching=false,soloPinchStartDist=0,soloPinchStartZoom=1,soloPinchMidX=0,soloPinchMidY=0;
 let soloPanning=false,soloLastPanX=0,soloLastPanY=0,soloIsPanMode=false;
@@ -1093,14 +1096,18 @@ function doRedrawAllStrokes(){
   soloCtx.setTransform(dpr,0,0,dpr,0,0);
   soloCtx.clearRect(0,0,w,h);soloCtx.fillStyle='#FFFFFF';soloCtx.fillRect(0,0,w,h);
   soloCtx.translate(soloCamX,soloCamY);soloCtx.scale(soloCamZoom,soloCamZoom);
-  // v8.2: 逐笔画渲染，fill-op/text 在序列中重新执行（自然跟随缩放）
-  for(var i=0;i<soloStrokes.length;i++){
-    var s=soloStrokes[i];
-    if(s.brush==='fill-op'){executeStoredFill(s);}
-    else if(s.brush==='text'){renderTextStroke(s);}
-    else renderStroke(s);
+  // v8.3: 逐层渲染（底层→顶层），fill-op/text 在序列中重新执行
+  for(var l=0;l<soloLayers.length;l++){
+    if(!soloLayers[l].visible)continue;
+    var strokes=soloLayers[l].strokes;
+    for(var i=0;i<strokes.length;i++){
+      var s=strokes[i];
+      if(s.brush==='fill-op'){executeStoredFill(s);}
+      else if(s.brush==='text'){renderTextStroke(s);}
+      else renderStroke(s);
+    }
   }
-  // 形状预览
+  // 形状预览（仅绘制在当前活动图层之上）
   if(toolDragging&&toolStartPoint&&toolPreviewPoint)drawToolPreview(toolStartPoint,toolPreviewPoint,activeTool);
 }
 
@@ -1123,15 +1130,13 @@ function finalizeToolShape(from,to,tool){
   else if(tool==='triangle'){var mx=(from.x+to.x)/2;ctx.beginPath();ctx.moveTo(mx,from.y);ctx.lineTo(to.x,to.y);ctx.lineTo(from.x,to.y);ctx.closePath();ctx.stroke();}
   ctx.restore();
 }
-// v8.2: 存储填充参数而非光栅快照，重绘时重新执行 → 跟随缩放
+// v8.3: 允许填充任意颜色（含白色），靠面积上限防止误填背景
 function toolFillAction(wx,wy){
   var w=soloCanvas.width,h=soloCanvas.height,dpr=window.devicePixelRatio||1;
   var px=Math.round((wx*soloCamZoom+soloCamX)*dpr),py=Math.round((wy*soloCamZoom+soloCamY)*dpr);
   if(px<0||px>=w||py<0||py>=h){showToast('点击位置超出画布');return;}
   var id=soloCtx.getImageData(0,0,w,h),d=id.data,idx=(py*w+px)*4;
   var tr=d[idx],tg=d[idx+1],tb=d[idx+2];
-  // 宽松白色检测：几乎纯白才拒绝（允许填充浅色区域）
-  if(tr>252&&tg>252&&tb>252){showToast('💡 点击的是空白区域，请点击有颜色的封闭区域');return;}
   var fc={r:parseInt(soloColor.slice(1,3),16),g:parseInt(soloColor.slice(3,5),16),b:parseInt(soloColor.slice(5,7),16)};
   var stack=[[px,py]],vis=new Uint8Array(w*h),tol=40,count=0,lim=Math.floor(w*h/2);
   while(stack.length&&count<lim){
@@ -1140,11 +1145,10 @@ function toolFillAction(wx,wy){
     if(Math.abs(d[di]-tr)>tol||Math.abs(d[di+1]-tg)>tol||Math.abs(d[di+2]-tb)>tol)continue;
     vis[vi]=1;d[di]=fc.r;d[di+1]=fc.g;d[di+2]=fc.b;d[di+3]=255;stack.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);count++;
   }
-  if(count>=lim){showToast('⚠️ 填充区域过大已取消（上限'+lim+'像素）');return;}
-  if(count===0){showToast('💡 未找到可填充区域，请确保点击位置周围有连续颜色');return;}
+  if(count>=lim){showToast('⚠️ 未找到封闭边界，填充取消。请先画一个封闭轮廓再填充内部');return;}
+  if(count===0){showToast('💡 此处无可填充区域');return;}
   soloCtx.putImageData(id,0,0);
-  // 存储填充参数，重绘时重新执行（自然跟随缩放）
-  soloUndoStack=[];
+  soloUndoStack.length=0;
   soloStrokes.push({brush:'fill-op',fillColor:soloColor,targetR:tr,targetG:tg,targetB:tb,worldX:wx,worldY:wy,tolerance:tol});
   updateUndoRedoBtns();showToast('✅ 已填充 '+count+' 像素 — 缩放时自动适配');
 }
@@ -1172,7 +1176,7 @@ function toolTextAction(wx,wy){
   ctx.fillText(text,wx,wy);
   ctx.restore();
   // 存储矢量笔画（重绘时自动跟随缩放）
-  soloUndoStack=[];
+  soloUndoStack.length=0;
   soloStrokes.push({brush:'text',text:text,worldX:wx,worldY:wy,fontSize:soloSize*8,color:soloColor,opacity:soloOpacity});
   updateUndoRedoBtns();showToast('✅ 已添加文字：'+text+' — 缩放时自动适配');
 }
@@ -1422,7 +1426,7 @@ function soloEnd(e){
     if(Math.abs(dx)<3&&Math.abs(dy)<3){toolDragging=false;toolStartPoint=null;toolPreviewPoint=null;scheduleRedraw();return;}
     finalizeToolShape(toolStartPoint,pt,activeTool);
     var sd={x1:toolStartPoint.x,y1:toolStartPoint.y,x2:pt.x,y2:pt.y};
-    soloUndoStack=[];
+    soloUndoStack.length=0;
     soloStrokes.push({brush:'shape-'+activeTool,color:soloColor,size:soloSize,opacity:soloOpacity,shapeData:sd,points:[toolStartPoint,pt],_seed:Math.floor(Math.random()*100000)});
     updateUndoRedoBtns();
     toolDragging=false;toolStartPoint=null;toolPreviewPoint=null;
@@ -1432,7 +1436,7 @@ function soloEnd(e){
   if(!soloDrawing)return;e.preventDefault();soloDrawing=false;
   if(soloPoints.length>=1){
     var pts=soloPoints.length>1?soloPoints.slice():[soloPoints[0],Object.assign({},soloPoints[0])];
-    soloUndoStack=[];
+    soloUndoStack.length=0;
     soloStrokes.push({brush:soloBrush,color:soloColor,size:soloSize,opacity:soloOpacity,hardness:soloHardness,points:pts,_hueOffset:rainbowHue,_seed:Math.floor(Math.random()*100000)});
     updateUndoRedoBtns();rainbowHue=(rainbowHue+37)%360;
   }
@@ -1545,9 +1549,71 @@ dq('#solo-colors-wrap').addEventListener('click',function(e){var btn=e.target.cl
 soloCustomColor.addEventListener('input',function(){soloColor=soloCustomColor.value;document.querySelectorAll('.solo-color-btn').forEach(function(b){b.classList.remove('active');});brushTipCache=null;});
 soloUndoBtn.addEventListener('click',function(){if(!soloStrokes.length)return;soloUndoStack.push(soloStrokes.pop());doRedrawAllStrokes();updateUndoRedoBtns();});
 soloRedoBtn.addEventListener('click',function(){if(!soloUndoStack.length)return;soloStrokes.push(soloUndoStack.pop());doRedrawAllStrokes();updateUndoRedoBtns();});
-soloClearBtn.addEventListener('click',function(){if(!soloStrokes.length)return;if(confirm('确定清空画布吗？')){soloStrokes=[];soloUndoStack=[];doRedrawAllStrokes();updateUndoRedoBtns();}});
+soloClearBtn.addEventListener('click',function(){if(!soloStrokes.length)return;if(confirm('确定清空当前图层吗？')){soloStrokes.length=0;soloUndoStack.length=0;doRedrawAllStrokes();updateUndoRedoBtns();}});
 soloSaveBtn.addEventListener('click',function(){var a=document.createElement('a');a.download='画作_'+new Date().toISOString().slice(0,10)+'.png';a.href=soloCanvas.toDataURL('image/png');a.click();showToast('已保存');});
 function updateUndoRedoBtns(){soloUndoBtn.disabled=!soloStrokes.length;soloRedoBtn.disabled=!soloUndoStack.length;}
+
+// ============ v8.3 图层管理 ============
+function switchLayer(idx){
+  if(idx===soloActiveLayer||idx<0||idx>=soloLayers.length)return;
+  soloActiveLayer=idx;
+  soloStrokes=soloLayers[idx].strokes;
+  soloUndoStack=soloLayers[idx].undoStack;
+  doRedrawAllStrokes();updateUndoRedoBtns();updateLayerUI();
+}
+function addLayer(){
+  if(soloLayers.length>=5){showToast('最多5个图层');return;}
+  var n=soloLayers.length+1;
+  soloLayers.push({name:'图层'+n,strokes:[],undoStack:[],visible:true});
+  soloActiveLayer=soloLayers.length-1;
+  soloStrokes=soloLayers[soloActiveLayer].strokes;
+  soloUndoStack=soloLayers[soloActiveLayer].undoStack;
+  doRedrawAllStrokes();updateUndoRedoBtns();updateLayerUI();
+  showToast('✅ 已添加图层'+n);
+}
+function deleteLayer(idx){
+  if(soloLayers.length<=1){showToast('至少保留1个图层');return;}
+  soloLayers.splice(idx,1);
+  if(soloActiveLayer>=soloLayers.length)soloActiveLayer=soloLayers.length-1;
+  soloStrokes=soloLayers[soloActiveLayer].strokes;
+  soloUndoStack=soloLayers[soloActiveLayer].undoStack;
+  doRedrawAllStrokes();updateUndoRedoBtns();updateLayerUI();
+}
+function toggleLayerVisibility(idx){
+  soloLayers[idx].visible=!soloLayers[idx].visible;
+  doRedrawAllStrokes();updateLayerUI();
+}
+function updateLayerUI(){
+  var container=dq('#layer-tabs');
+  if(!container)return;
+  container.innerHTML='';
+  for(var i=0;i<soloLayers.length;i++){
+    var l=soloLayers[i];
+    var btn=document.createElement('button');
+    btn.className='layer-tab'+(i===soloActiveLayer?' active':'')+(l.visible?'':' hidden-layer');
+    btn.innerHTML=(l.visible?'':'👁‍🗨')+l.name;
+    btn.title=l.visible?'点击切换图层':'点击切换（已隐藏）';
+    (function(idx){btn.addEventListener('click',function(e){
+      if(e.shiftKey||e.ctrlKey){toggleLayerVisibility(idx);return;}
+      switchLayer(idx);
+    });})(i);
+    // 右键菜单：删除或隐藏
+    btn.addEventListener('contextmenu',function(e){e.preventDefault();
+      if(soloLayers.length<=1){toggleLayerVisibility(idx);return;}
+      if(confirm('删除图层「'+soloLayers[idx].name+'」？\n（或按Shift+点击切换可见性）'))deleteLayer(idx);
+    });
+    container.appendChild(btn);
+  }
+  // 添加图层按钮
+  if(soloLayers.length<5){
+    var addBtn=document.createElement('button');
+    addBtn.className='layer-tab layer-add';addBtn.textContent='+';addBtn.title='添加图层';
+    addBtn.addEventListener('click',addLayer);container.appendChild(addBtn);
+  }
+  // 图层提示
+  var hint=dq('#layer-hint');
+  if(hint)hint.textContent=soloActiveLayer+1+'/'+soloLayers.length+' | 点击切换 · ⇧隐藏 · 右键删除';
+}
 
 // collapse
 (function(){var b=dq('#solo-toggle-toolbar');if(b)b.addEventListener('click',function(){soloToolbarCollapsed=!soloToolbarCollapsed;var tb=dq('#solo-toolbar');if(tb)tb.classList.toggle('collapsed',soloToolbarCollapsed);b.textContent=soloToolbarCollapsed?'▲':'▼';});})();
@@ -1560,7 +1626,7 @@ if(eb)eb.addEventListener('click',function(){soloImmersed=false;var t=dq('#solo-
 soloCanvas.addEventListener('click',function(e){if(!soloImmersed)return;var t=dq('#solo-top-bar');if(t)t.classList.remove('immersed');var b=dq('#solo-toolbar');if(b)b.classList.remove('immersed');var eb=dq('#solo-exit-immerse');if(eb)eb.classList.remove('hidden');clearTimeout(soloImmersedTimeout);soloImmersedTimeout=setTimeout(function(){if(soloImmersed){var t2=dq('#solo-top-bar');if(t2)t2.classList.add('immersed');var b2=dq('#solo-toolbar');if(b2)b2.classList.add('immersed');}},2000);});
 
 // entry
-soloModeBtn.addEventListener('click',function(){lobbyScreen.classList.remove('active');soloScreen.classList.add('active');isDailyMode=false;if(dailyBar)dailyBar.classList.add('hidden');resetSoloState();initSoloCanvasSafe();});
+soloModeBtn.addEventListener('click',function(){lobbyScreen.classList.remove('active');soloScreen.classList.add('active');isDailyMode=false;if(dailyBar)dailyBar.classList.add('hidden');resetSoloState();initSoloCanvasSafe();setTimeout(updateLayerUI,300);});
 soloBackBtn.addEventListener('click',function(){isDailyMode=false;if(dailyBar)dailyBar.classList.add('hidden');resetSoloState();soloScreen.classList.remove('active');lobbyScreen.classList.add('active');});
 window.addEventListener('resize',function(){if(soloScreen.classList.contains('active'))initSoloCanvas();});
 window.addEventListener('orientationchange',function(){if(soloScreen.classList.contains('active'))setTimeout(initSoloCanvas,300);});
@@ -1589,7 +1655,9 @@ function cancelSoloOperation(){
 }
 
 function resetSoloState(){
-  soloStrokes = []; soloUndoStack = [];
+  // 重置所有图层
+  soloLayers=[{name:'图层1',strokes:[],undoStack:[],visible:true}];soloActiveLayer=0;
+  soloStrokes=soloLayers[0].strokes;soloUndoStack=soloLayers[0].undoStack;
   soloCamX = 0; soloCamY = 0; soloCamZoom = 1;
   soloImmersed = false; soloToolbarCollapsed = false;
   soloIsPanMode = false; activeTool=null; toolStartPoint=null; toolDragging=false; toolPreviewPoint=null;
@@ -1627,6 +1695,7 @@ function enterDailyMode(){
   if(dailyBar) dailyBar.classList.remove('hidden');
   if(dailyWordEl) dailyWordEl.textContent = dailyWord;
   initSoloCanvasSafe();
+  setTimeout(updateLayerUI,300);
   showToast('📅 今日挑战：' + dailyWord);
 }
 
@@ -1781,4 +1850,4 @@ function updateAchievementBadge(){
   }, 2000);
 })();
 
-console.log('🎨 你画我猜 v8.2 - 前端就绪');
+console.log('🎨 你画我猜 v8.3 - 前端就绪');

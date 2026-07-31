@@ -268,3 +268,11 @@ input[type="text"]:focus{border-color:var(--primary)}
 /* 连击提示 */
 .streak-badge{display:inline-block;padding:2px 8px;border-radius:12px;background:linear-gradient(135deg,#FF6B6B,#FF8E53);color:#fff;font-size:0.75rem;font-weight:700;animation:streakPulse 0.5s ease-in-out infinite alternate}
 @keyframes streakPulse{from{transform:scale(1)}to{transform:scale(1.1)}}
+/* ====== 图层系统 v8.3 ====== */
+.layer-tabs{display:flex;gap:3px;flex-wrap:wrap;align-items:center}
+.layer-tab{padding:3px 8px;border:1.5px solid var(--solo-border);border-radius:6px;background:var(--solo-bg);color:var(--solo-text);font-size:0.7rem;cursor:pointer;transition:all 0.15s;white-space:nowrap}
+.layer-tab.active{border-color:var(--primary);background:rgba(92,107,192,0.1);font-weight:700}
+.layer-tab.hidden-layer{opacity:0.5;text-decoration:line-through;text-decoration-thickness:1px}
+.layer-tab:active{transform:scale(0.95)}
+.layer-add{font-size:1rem;font-weight:700;padding:3px 10px;border-style:dashed}
+.layer-hint{font-size:0.6rem;color:var(--solo-muted);margin-left:4px}

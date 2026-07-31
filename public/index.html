@@ -41,7 +41,7 @@
   <div id="lobby-screen" class="screen active">
     <div class="lobby-container">
       <h1 class="logo">🎨 你画我猜</h1>
-      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v8.2</span></p>
+      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v8.3</span></p>
       <button id="theme-toggle" class="theme-toggle" title="切换主题">🌓</button>
 
       <!-- 每日挑战卡片 -->
@@ -263,6 +263,12 @@
     </div>
     <button id="solo-toggle-toolbar" class="solo-toggle-toolbar" title="折叠工具栏">▼</button>
     <div id="solo-toolbar">
+      <!-- v8.3 图层选择器 -->
+      <div class="solo-row">
+        <span class="solo-label">图层</span>
+        <div class="layer-tabs" id="layer-tabs"></div>
+        <span class="layer-hint" id="layer-hint" style="font-size:0.6rem;color:var(--solo-muted)">点击切换 · ⇧隐藏 · 右键删除</span>
+      </div>
       <!-- 画笔类型 -->
       <div class="solo-row">
         <div class="solo-brushes" id="solo-brushes">
