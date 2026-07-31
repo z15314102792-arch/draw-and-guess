@@ -271,8 +271,9 @@ input[type="text"]:focus{border-color:var(--primary)}
 /* ====== 图层系统 v8.3 ====== */
 .layer-tabs{display:flex;gap:3px;flex-wrap:wrap;align-items:center}
 .layer-tab{padding:3px 8px;border:1.5px solid var(--solo-border);border-radius:6px;background:var(--solo-bg);color:var(--solo-text);font-size:0.7rem;cursor:pointer;transition:all 0.15s;white-space:nowrap}
-.layer-tab.active{border-color:var(--primary);background:rgba(92,107,192,0.1);font-weight:700}
-.layer-tab.hidden-layer{opacity:0.5;text-decoration:line-through;text-decoration-thickness:1px}
+.layer-tab.active{border-color:var(--primary);background:rgba(92,107,192,0.15);font-weight:700}
 .layer-tab:active{transform:scale(0.95)}
+.layer-eye{width:22px;height:22px;border:1px solid transparent;border-radius:4px;background:transparent;font-size:0.7rem;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all 0.15s;color:var(--solo-text)}
+.layer-eye:hover{border-color:var(--solo-border);background:var(--solo-bg)}
 .layer-add{font-size:1rem;font-weight:700;padding:3px 10px;border-style:dashed}
 .layer-hint{font-size:0.6rem;color:var(--solo-muted);margin-left:4px}

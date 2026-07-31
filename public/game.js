@@ -1181,15 +1181,17 @@ function toolTextAction(wx,wy){
   updateUndoRedoBtns();showToast('✅ 已添加文字：'+text+' — 缩放时自动适配');
 }
 
-// v8.2: 重绘时重新执行填充（基于当前画布像素 + 当前缩放 → 自然适配）
+// v8.3: 重绘时重新执行填充，带缓存（不变参数时复用，避免卡顿）
 function executeStoredFill(s){
+  // 缓存检查：相机位置+缩放未变时直接复用上次结果
+  var ck=soloCamX.toFixed(1)+','+soloCamY.toFixed(1)+','+soloCamZoom.toFixed(2);
+  if(s._cached&&s._ck===ck){soloCtx.putImageData(s._cached,0,0);return;}
   var w=soloCanvas.width,h=soloCanvas.height,dpr=window.devicePixelRatio||1;
   var px=Math.round((s.worldX*soloCamZoom+soloCamX)*dpr);
   var py=Math.round((s.worldY*soloCamZoom+soloCamY)*dpr);
   if(px<0||px>=w||py<0||py>=h)return;
   var id=soloCtx.getImageData(0,0,w,h),d=id.data,idx=(py*w+px)*4;
   var tr=d[idx],tg=d[idx+1],tb=d[idx+2];
-  // 检查点击位置颜色是否与存储的目标色匹配（允许容差）
   if(Math.abs(d[idx]-s.targetR)>s.tolerance||Math.abs(d[idx+1]-s.targetG)>s.tolerance||Math.abs(d[idx+2]-s.targetB)>s.tolerance)return;
   var fc={r:parseInt(s.fillColor.slice(1,3),16),g:parseInt(s.fillColor.slice(3,5),16),b:parseInt(s.fillColor.slice(5,7),16)};
   var stack=[[px,py]],vis=new Uint8Array(w*h),count=0,lim=Math.floor(w*h/2);
@@ -1199,7 +1201,16 @@ function executeStoredFill(s){
     if(Math.abs(d[di]-tr)>s.tolerance||Math.abs(d[di+1]-tg)>s.tolerance||Math.abs(d[di+2]-tb)>s.tolerance)continue;
     vis[vi]=1;d[di]=fc.r;d[di+1]=fc.g;d[di+2]=fc.b;d[di+3]=255;stack.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);count++;
   }
-  if(count<lim)soloCtx.putImageData(id,0,0);
+  if(count<lim){soloCtx.putImageData(id,0,0);
+    // 缓存结果（相机不变时复用，消除缩放/拖拽时的卡顿）
+    s._cached=new ImageData(new Uint8ClampedArray(id.data),id.width,id.height);s._ck=ck;
+  }
+}
+function invalidateFillCaches(){
+  for(var l=0;l<soloLayers.length;l++){
+    var st=soloLayers[l].strokes;
+    for(var i=0;i<st.length;i++){if(st[i].brush==='fill-op'){st[i]._cached=null;st[i]._ck=null;}}
+  }
 }
 // v8.2: 矢量文字渲染
 function renderTextStroke(s){
@@ -1534,7 +1545,7 @@ soloCanvas.addEventListener('touchend',soloEnd);
 soloCanvas.addEventListener('mousedown',soloStart);soloCanvas.addEventListener('mousemove',soloMove);
 soloCanvas.addEventListener('mouseup',soloEnd);soloCanvas.addEventListener('mouseleave',function(e){cancelSoloOperation();});
 soloCanvas.addEventListener('touchcancel',function(e){cancelSoloOperation();soloPinching=false;soloTwoFinger=false;});
-soloCanvas.addEventListener('wheel',function(e){e.preventDefault();soloCachedRect=null;var rect=soloCanvas.getBoundingClientRect(),mx=e.clientX-rect.left,my=e.clientY-rect.top,nz=Math.max(0.01,Math.min(5,soloCamZoom*(e.deltaY<0?1.1:0.9)));soloCamX=mx-(mx-soloCamX)*(nz/soloCamZoom);soloCamY=my-(my-soloCamY)*(nz/soloCamZoom);soloCamZoom=nz;scheduleRedraw();updateZoomBadge();},{passive:false});
+soloCanvas.addEventListener('wheel',function(e){e.preventDefault();soloCachedRect=null;var rect=soloCanvas.getBoundingClientRect(),mx=e.clientX-rect.left,my=e.clientY-rect.top,nz=Math.max(0.01,Math.min(5,soloCamZoom*(e.deltaY<0?1.1:0.9)));soloCamX=mx-(mx-soloCamX)*(nz/soloCamZoom);soloCamY=my-(my-soloCamY)*(nz/soloCamZoom);soloCamZoom=nz;invalidateFillCaches();scheduleRedraw();updateZoomBadge();},{passive:false});
 function updateZoomBadge(){soloZoomBadge.textContent=Math.round(soloCamZoom*100)+'%';}
 
 // brush selector
@@ -1547,8 +1558,8 @@ soloOpacitySlider.addEventListener('input',function(){soloOpacity=+soloOpacitySl
 soloSmoothSlider.addEventListener('input',function(){soloHardness=1-+soloSmoothSlider.value/100;soloSmoothVal.textContent=soloSmoothSlider.value;brushTipCache=null;});
 dq('#solo-colors-wrap').addEventListener('click',function(e){var btn=e.target.closest('.solo-color-btn');if(!btn)return;document.querySelectorAll('.solo-color-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');soloColor=btn.dataset.color;soloCustomColor.value=soloColor;brushTipCache=null;});
 soloCustomColor.addEventListener('input',function(){soloColor=soloCustomColor.value;document.querySelectorAll('.solo-color-btn').forEach(function(b){b.classList.remove('active');});brushTipCache=null;});
-soloUndoBtn.addEventListener('click',function(){if(!soloStrokes.length)return;soloUndoStack.push(soloStrokes.pop());doRedrawAllStrokes();updateUndoRedoBtns();});
-soloRedoBtn.addEventListener('click',function(){if(!soloUndoStack.length)return;soloStrokes.push(soloUndoStack.pop());doRedrawAllStrokes();updateUndoRedoBtns();});
+soloUndoBtn.addEventListener('click',function(){if(!soloStrokes.length)return;soloUndoStack.push(soloStrokes.pop());invalidateFillCaches();doRedrawAllStrokes();updateUndoRedoBtns();});
+soloRedoBtn.addEventListener('click',function(){if(!soloUndoStack.length)return;soloStrokes.push(soloUndoStack.pop());invalidateFillCaches();doRedrawAllStrokes();updateUndoRedoBtns();});
 soloClearBtn.addEventListener('click',function(){if(!soloStrokes.length)return;if(confirm('确定清空当前图层吗？')){soloStrokes.length=0;soloUndoStack.length=0;doRedrawAllStrokes();updateUndoRedoBtns();}});
 soloSaveBtn.addEventListener('click',function(){var a=document.createElement('a');a.download='画作_'+new Date().toISOString().slice(0,10)+'.png';a.href=soloCanvas.toDataURL('image/png');a.click();showToast('已保存');});
 function updateUndoRedoBtns(){soloUndoBtn.disabled=!soloStrokes.length;soloRedoBtn.disabled=!soloUndoStack.length;}
@@ -1589,30 +1600,31 @@ function updateLayerUI(){
   container.innerHTML='';
   for(var i=0;i<soloLayers.length;i++){
     var l=soloLayers[i];
+    // 图层名字按钮
     var btn=document.createElement('button');
-    btn.className='layer-tab'+(i===soloActiveLayer?' active':'')+(l.visible?'':' hidden-layer');
-    btn.innerHTML=(l.visible?'':'👁‍🗨')+l.name;
-    btn.title=l.visible?'点击切换图层':'点击切换（已隐藏）';
-    (function(idx){btn.addEventListener('click',function(e){
-      if(e.shiftKey||e.ctrlKey){toggleLayerVisibility(idx);return;}
-      switchLayer(idx);
-    });})(i);
-    // 右键菜单：删除或隐藏
-    btn.addEventListener('contextmenu',function(e){e.preventDefault();
-      if(soloLayers.length<=1){toggleLayerVisibility(idx);return;}
-      if(confirm('删除图层「'+soloLayers[idx].name+'」？\n（或按Shift+点击切换可见性）'))deleteLayer(idx);
-    });
+    btn.className='layer-tab'+(i===soloActiveLayer?' active':'');
+    btn.textContent=l.name;
+    btn.title='切换到 '+l.name;
+    (function(idx){btn.addEventListener('click',function(){switchLayer(idx);});})(i);
     container.appendChild(btn);
+    // 可见性眼睛按钮
+    var eye=document.createElement('button');
+    eye.className='layer-eye';
+    eye.innerHTML=l.visible?'👁':'—';
+    eye.title=l.visible?'隐藏 '+l.name:'显示 '+l.name;
+    eye.style.opacity=l.visible?'1':'0.3';
+    (function(idx){eye.addEventListener('click',function(e){e.stopPropagation();toggleLayerVisibility(idx);});})(i);
+    container.appendChild(eye);
   }
   // 添加图层按钮
   if(soloLayers.length<5){
     var addBtn=document.createElement('button');
-    addBtn.className='layer-tab layer-add';addBtn.textContent='+';addBtn.title='添加图层';
+    addBtn.className='layer-tab layer-add';addBtn.textContent='+';addBtn.title='添加图层（最多5层）';
     addBtn.addEventListener('click',addLayer);container.appendChild(addBtn);
   }
   // 图层提示
   var hint=dq('#layer-hint');
-  if(hint)hint.textContent=soloActiveLayer+1+'/'+soloLayers.length+' | 点击切换 · ⇧隐藏 · 右键删除';
+  if(hint)hint.textContent=soloActiveLayer+1+'/'+soloLayers.length+' | 点击图层名切换 · 👁隐藏/显示';
 }
 
 // collapse
@@ -1850,4 +1862,4 @@ function updateAchievementBadge(){
   }, 2000);
 })();
 
-console.log('🎨 你画我猜 v8.3 - 前端就绪');
+console.log('🎨 你画我猜 v8.4 - 前端就绪');
