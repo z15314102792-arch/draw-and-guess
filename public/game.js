@@ -1351,6 +1351,53 @@ function resetSoloState(){
   updateStatusBar();
 }
 
+// v8.9: 屏幕切换与工具栏控制
+soloModeBtn.addEventListener('click',function(){
+  lobbyScreen.classList.remove('active');
+  soloScreen.classList.add('active');
+  resetSoloState();
+  initSoloCanvas();
+  updateLayerUI();
+  updateStatusBar();
+});
+soloBackBtn.addEventListener('click',function(){
+  soloScreen.classList.remove('active');
+  lobbyScreen.classList.add('active');
+  // 如果正在等待/游戏中则不显示lobby
+  if(gameStatus==='waiting'||gameStatus==='word-select'||gameStatus==='drawing'||gameStatus==='reveal'){
+    gameScreen.classList.add('active');
+    lobbyScreen.classList.remove('active');
+  }
+});
+// 沉浸模式
+var soloImmerseBtn=dq('#solo-immerse-btn');
+var soloExitImmerse=dq('#solo-exit-immerse');
+if(soloImmerseBtn)soloImmerseBtn.addEventListener('click',function(){
+  soloImmersed=true;
+  var t=dq('#solo-top-bar');if(t)t.classList.add('immersed');
+  var tb=dq('#solo-toolbar');if(tb)tb.classList.add('immersed');
+  soloScreen.classList.add('immersed-full');
+  if(soloExitImmerse)soloExitImmerse.classList.remove('hidden');
+  showToast('🔲 沉浸模式 — 点击左上角 ✕ 退出');
+});
+if(soloExitImmerse)soloExitImmerse.addEventListener('click',function(){
+  soloImmersed=false;
+  var t=dq('#solo-top-bar');if(t)t.classList.remove('immersed');
+  var tb=dq('#solo-toolbar');if(tb)tb.classList.remove('immersed');
+  soloScreen.classList.remove('immersed-full');
+  soloExitImmerse.classList.add('hidden');
+});
+// 工具栏折叠
+var soloToggleToolbar=dq('#solo-toggle-toolbar');
+if(soloToggleToolbar)soloToggleToolbar.addEventListener('click',function(){
+  soloToolbarCollapsed=!soloToolbarCollapsed;
+  var tb=dq('#solo-toolbar');
+  if(tb){
+    if(soloToolbarCollapsed){tb.classList.add('collapsed');soloToggleToolbar.textContent='▲';}
+    else{tb.classList.remove('collapsed');soloToggleToolbar.textContent='▼';}
+  }
+});
+
 function initSoloCanvas(){
   var wrap=dq('#solo-canvas-wrap'),w=wrap.clientWidth,h=wrap.clientHeight;
   // 兜底：如果容器尺寸还没就绪，用视口尺寸
@@ -1634,6 +1681,15 @@ function soloEnd(e){
   }
   soloPoints=[];
 }
+// v8.9: 取消当前所有操作（鼠标离开画布/触摸取消时）
+function cancelSoloOperation(){
+  if(soloDrawing){soloDrawing=false;soloPoints=[];}
+  if(toolDragging){toolDragging=false;toolStartPoint=null;toolPreviewPoint=null;}
+  if(imageDragging){imageDragging=false;imageDragStartWorld=null;imageDragOrigRect=null;}
+  if(imageResizing){imageResizing=false;imageResizeHandle=null;imageResizeStartWorld=null;imageDragOrigRect=null;}
+  if(soloPanning)soloPanning=false;
+  scheduleRedraw();
+}
 
 function drawLiveSegment(from,to){
   var ctx=soloCtx;ctx.save();ctx.lineCap='round';ctx.lineJoin='round';ctx.globalAlpha=soloOpacity;
@@ -1912,13 +1968,29 @@ function moveLayerDown(idx){moveLayer(idx,idx+1);}
 function moveLayerToTop(idx){moveLayer(idx,soloLayers.length-1);}
 function moveLayerToBottom(idx){moveLayer(idx,0);}
 function mergeDown(){
-  if(soloActiveLayer<=0){showToast('已在最底层，无法向下合并');return;}
-  var current=soloLayers[soloActiveLayer],target=soloLayers[soloActiveLayer-1];
-  target.strokes=target.strokes.concat(current.strokes);
-  soloLayers.splice(soloActiveLayer,1);
-  soloActiveLayer=soloActiveLayer-1;
-  soloStrokes=soloLayers[soloActiveLayer].strokes;
-  soloUndoStack=soloLayers[soloActiveLayer].undoStack;
+  var ci=soloDrawOrder[soloActiveDrawIdx];
+  if(!ci||ci.type!=='layer'){showToast('请先选中一个图层');return;}
+  // v8.9: 在 drawOrder 中找到下方最近的图层
+  var targetLayer=null;
+  for(var i=soloActiveDrawIdx-1;i>=0;i--){
+    if(soloDrawOrder[i].type==='layer'){targetLayer=soloLayers[soloDrawOrder[i].idx];break;}
+  }
+  if(!targetLayer){showToast('已在最底层，无法向下合并');return;}
+  // 合并：当前图层笔画合并到目标图层
+  var curLayer=soloLayers[ci.idx];
+  targetLayer.strokes=targetLayer.strokes.concat(curLayer.strokes);
+  // 删除当前图层，修复 drawOrder 引用
+  var removedIdx=ci.idx;
+  soloLayers.splice(removedIdx,1);
+  for(var j=soloDrawOrder.length-1;j>=0;j--){
+    if(soloDrawOrder[j].type==='layer'&&soloDrawOrder[j].idx===removedIdx)soloDrawOrder.splice(j,1);
+    else if(soloDrawOrder[j].type==='layer'&&soloDrawOrder[j].idx>removedIdx)soloDrawOrder[j].idx--;
+  }
+  // 找到目标图层在 drawOrder 中的新位置并切换
+  for(var k=0;k<soloDrawOrder.length;k++){
+    if(soloDrawOrder[k].type==='layer'&&soloLayers[soloDrawOrder[k].idx]===targetLayer){soloActiveDrawIdx=k;break;}
+  }
+  soloStrokes=targetLayer.strokes;soloUndoStack=targetLayer.undoStack;
   doRedrawAllStrokes();updateUndoRedoBtns();updateLayerUI();updateStatusBar();
   showToast('✅ 已向下合并图层');
 }

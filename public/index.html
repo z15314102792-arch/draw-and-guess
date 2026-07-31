@@ -41,7 +41,7 @@
   <div id="lobby-screen" class="screen active">
     <div class="lobby-container">
       <h1 class="logo">🎨 你画我猜</h1>
-      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v8.8</span></p>
+      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v8.9</span></p>
       <button id="theme-toggle" class="theme-toggle" title="切换主题">🌓</button>
 
       <!-- 每日挑战卡片 -->
@@ -241,10 +241,10 @@
       </div>
     </div>
 
-    <!-- Toast 提示 -->
-    <div id="toast" class="toast hidden"></div>
-
   </div>
+
+  <!-- Toast 提示（全局，不受屏幕切换影响） -->
+  <div id="toast" class="toast hidden"></div>
 
   <!-- ====== 单人创作模式 ====== -->
   <div id="solo-screen" class="screen">
@@ -254,7 +254,7 @@
       <button id="solo-pan-btn" class="solo-bar-btn" title="拖拽/缩放画布">✋</button>
       <button id="solo-pigment-btn" class="solo-bar-btn" title="颜料混合模式：黄+青=绿 | 青+品红=蓝 | 品红+黄=红">🎨</button>
       <span class="solo-zoom-badge" id="solo-zoom-badge">100%</span>
-      <span class="version-tag" style="font-size:0.6rem;opacity:0.7">v8.8</span>
+      <span class="version-tag" style="font-size:0.6rem;opacity:0.7">v8.9</span>
       <button id="solo-immerse-btn" class="solo-bar-btn" title="沉浸模式">⛶</button>
     </div>
     <!-- 沉浸模式退出按钮 -->
@@ -297,7 +297,7 @@
           <button class="solo-brush-btn eraser-btn" data-brush="eraser" title="擦除画面内容，还原白色背景"><span class="brush-icon">⌫</span><span class="brush-label">橡皮</span><span class="brush-desc">擦除还原</span></button>
         </div>
       </div>
-      <!-- 辅助工具行 v8.8 -->
+      <!-- 辅助工具行 v8.9 -->
       <div class="solo-row solo-tools-row">
         <button class="solo-tool-btn" data-tool="select" title="选择/移动贴图（点击选中，拖动移动，Delete删除）">🖱</button>
         <span class="tool-sep">|</span>
@@ -365,7 +365,7 @@
         <span id="achievements-count">0</span>🏆
       </div>
     </div>
-    <!-- v8.8 状态栏 -->
+    <!-- v8.9 状态栏 -->
     <div id="solo-status-bar" class="solo-status-bar">
       <span class="status-item" id="status-tool">✏️ 钢笔</span>
       <span class="status-sep">|</span>
