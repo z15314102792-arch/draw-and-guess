@@ -1023,7 +1023,6 @@ window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 300)
 // 单人创作 v3 — 浅色主题/沉浸全屏/12种创意画笔
 const soloScreen=$('#solo-screen'),soloModeBtn=$('#solo-mode-btn'),soloBackBtn=$('#solo-back-btn');
 const soloCanvas=$('#solo-canvas'),soloCtx=soloCanvas.getContext('2d');
-const soloOverlay=$('#solo-overlay'),soloOvCtx=soloOverlay?soloOverlay.getContext('2d'):null;
 let soloTool=null,toolStart=null;
 const soloSizeSlider=$('#solo-size-slider'),soloSizeVal=$('#solo-size-val');
 const soloOpacitySlider=$('#solo-opacity-slider'),soloOpacityVal=$('#solo-opacity-val');
@@ -1053,21 +1052,7 @@ function doRedrawAllStrokes(){
   for(var i=0;i<soloStrokes.length;i++)renderStroke(soloStrokes[i]);
 }
 
-// --- 工具函数 v7.0 ---
-function syncOverlay(){if(soloOverlay){soloOverlay.style.width=soloCanvas.style.width;soloOverlay.style.height=soloCanvas.style.height;soloOverlay.width=soloCanvas.width;soloOverlay.height=soloCanvas.height;}}
-function clearOv(){if(soloOvCtx){var w=soloOverlay.width,h=soloOverlay.height;soloOvCtx.clearRect(0,0,w,h);}}
-function drawToolPreview(from,to,tool){
-  if(!soloOvCtx)return;clearOv();
-  var ctx=soloOvCtx,dpr=window.devicePixelRatio||1;
-  ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.scale(dpr,dpr);
-  ctx.translate(soloCamX,soloCamY);ctx.scale(soloCamZoom,soloCamZoom);
-  ctx.strokeStyle=soloColor;ctx.lineWidth=soloSize;ctx.lineCap='round';ctx.lineJoin='round';
-  ctx.setLineDash([5,3]);ctx.globalAlpha=0.8;
-  if(tool==='line'){ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(to.x,to.y);ctx.stroke();}
-  else if(tool==='rect'){ctx.strokeRect(from.x,from.y,to.x-from.x,to.y-from.y);}
-  else if(tool==='circle'){var rx=(to.x-from.x)/2,ry=(to.y-from.y)/2;ctx.beginPath();ctx.ellipse(from.x+rx,from.y+ry,Math.abs(rx),Math.abs(ry),0,0,Math.PI*2);ctx.stroke();}
-  ctx.restore();
-}
+// --- 工具函数 v7.2 (极简：无预览，mousedown→mouseup直接画) ---
 function finalizeToolShape(from,to,tool){
   var ctx=soloCtx,dpr=window.devicePixelRatio||1;
   ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.scale(dpr,dpr);
@@ -1132,7 +1117,6 @@ function initSoloCanvas(){
   soloCtx.clearRect(0,0,w,h);
   soloCtx.fillStyle='#FFFFFF';
   soloCtx.fillRect(0,0,w,h);
-  syncOverlay();
   doRedrawAllStrokes();
 }
 function renderStroke(stroke){
@@ -1281,10 +1265,10 @@ function soloStart(e){if(soloTwoFinger||soloPinching)return;soloCachedRect=null;
   // 工具处理
   if(soloTool==='fill'){e.preventDefault();var fp=getSoloPos(e);toolFill(fp.x,fp.y);return;}
   if(soloTool==='pick'){e.preventDefault();var pp=getSoloPos(e);toolPick(pp.x,pp.y);return;}
-  if(soloTool==='line'||soloTool==='rect'||soloTool==='circle'){e.preventDefault();syncOverlay();toolStart=getSoloPos(e);return;}
+  if(soloTool==='line'||soloTool==='rect'||soloTool==='circle'){e.preventDefault();toolStart=getSoloPos(e);return;}
   e.preventDefault();soloDrawing=true;soloLastPos=getSoloPos(e);soloPoints=[soloLastPos];}
-function soloMove(e){if(soloPinching)return soloPinchMove(e);if(soloPanning){e.preventDefault();var p=getSoloPos(e);soloCamX+=p.rawX-soloLastPanX;soloCamY+=p.rawY-soloLastPanY;soloLastPanX=p.rawX;soloLastPanY=p.rawY;scheduleRedraw();return;}if(toolStart){e.preventDefault();var pt=getSoloPos(e);drawToolPreview(toolStart,pt,soloTool);return;}if(!soloDrawing)return;e.preventDefault();var pt=getSoloPos(e);if(Math.abs(pt.x-soloLastPos.x)<0.5&&Math.abs(pt.y-soloLastPos.y)<0.5)return;soloPoints.push(pt);soloCtx.setTransform(1,0,0,1,0,0);soloCtx.scale(window.devicePixelRatio||1,window.devicePixelRatio||1);soloCtx.translate(soloCamX,soloCamY);soloCtx.scale(soloCamZoom,soloCamZoom);drawLiveSegment(soloLastPos,pt);soloLastPos=pt;}
-function soloEnd(e){if(soloPinching){soloPinching=false;soloTwoFinger=e.touches?e.touches.length>=2:false;setTimeout(function(){soloZoomHint.classList.add('hidden');},1500);return;}if(soloPanning){soloPanning=false;return;}if(toolStart){e.preventDefault();var pt=getSoloPos(e);clearOv();finalizeToolShape(toolStart,pt,soloTool);var sd={x1:toolStart.x,y1:toolStart.y,x2:pt.x,y2:pt.y};soloUndoStack=[];soloStrokes.push({brush:'shape-'+soloTool,color:soloColor,size:soloSize,opacity:soloOpacity,shapeData:sd,points:[toolStart,pt],_seed:Math.floor(Math.random()*100000)});updateUndoRedoBtns();toolStart=null;return;}if(!soloDrawing)return;e.preventDefault();soloDrawing=false;if(soloPoints.length>=1){var pts=soloPoints.length>1?soloPoints.slice():[soloPoints[0],Object.assign({},soloPoints[0])];soloUndoStack=[];soloStrokes.push({brush:soloBrush,color:soloColor,size:soloSize,opacity:soloOpacity,hardness:soloHardness,points:pts,_hueOffset:rainbowHue,_seed:Math.floor(Math.random()*100000)});updateUndoRedoBtns();rainbowHue=(rainbowHue+37)%360;}soloPoints=[];}
+function soloMove(e){if(soloPinching)return soloPinchMove(e);if(soloPanning){e.preventDefault();var p=getSoloPos(e);soloCamX+=p.rawX-soloLastPanX;soloCamY+=p.rawY-soloLastPanY;soloLastPanX=p.rawX;soloLastPanY=p.rawY;scheduleRedraw();return;}if(!soloDrawing)return;e.preventDefault();var pt=getSoloPos(e);if(Math.abs(pt.x-soloLastPos.x)<0.5&&Math.abs(pt.y-soloLastPos.y)<0.5)return;soloPoints.push(pt);soloCtx.setTransform(1,0,0,1,0,0);soloCtx.scale(window.devicePixelRatio||1,window.devicePixelRatio||1);soloCtx.translate(soloCamX,soloCamY);soloCtx.scale(soloCamZoom,soloCamZoom);drawLiveSegment(soloLastPos,pt);soloLastPos=pt;}
+function soloEnd(e){if(soloPinching){soloPinching=false;soloTwoFinger=e.touches?e.touches.length>=2:false;setTimeout(function(){soloZoomHint.classList.add('hidden');},1500);return;}if(soloPanning){soloPanning=false;return;}if(toolStart){e.preventDefault();var pt=getSoloPos(e);finalizeToolShape(toolStart,pt,soloTool);var sd={x1:toolStart.x,y1:toolStart.y,x2:pt.x,y2:pt.y};soloUndoStack=[];soloStrokes.push({brush:'shape-'+soloTool,color:soloColor,size:soloSize,opacity:soloOpacity,shapeData:sd,points:[toolStart,pt],_seed:Math.floor(Math.random()*100000)});updateUndoRedoBtns();toolStart=null;return;}if(!soloDrawing)return;e.preventDefault();soloDrawing=false;if(soloPoints.length>=1){var pts=soloPoints.length>1?soloPoints.slice():[soloPoints[0],Object.assign({},soloPoints[0])];soloUndoStack=[];soloStrokes.push({brush:soloBrush,color:soloColor,size:soloSize,opacity:soloOpacity,hardness:soloHardness,points:pts,_hueOffset:rainbowHue,_seed:Math.floor(Math.random()*100000)});updateUndoRedoBtns();rainbowHue=(rainbowHue+37)%360;}soloPoints=[];}
 
 function drawLiveSegment(from,to){
   var ctx=soloCtx;ctx.save();ctx.lineCap='round';ctx.lineJoin='round';ctx.globalAlpha=soloOpacity;
@@ -1381,9 +1365,9 @@ soloCanvas.addEventListener('wheel',function(e){e.preventDefault();soloCachedRec
 function updateZoomBadge(){soloZoomBadge.textContent=Math.round(soloCamZoom*100)+'%';}
 
 // brush selector
-dq('#solo-brushes').addEventListener('click',function(e){var btn=e.target.closest('.solo-brush-btn');if(!btn)return;dq('#solo-brushes').querySelectorAll('.solo-brush-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');soloBrush=btn.dataset.brush;soloTool=null;toolStart=null;clearOv();doRedrawAllStrokes();dq('.solo-tools-row').querySelectorAll('.solo-tool-btn').forEach(function(b){b.classList.remove('active');});});
+dq('#solo-brushes').addEventListener('click',function(e){var btn=e.target.closest('.solo-brush-btn');if(!btn)return;dq('#solo-brushes').querySelectorAll('.solo-brush-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');soloBrush=btn.dataset.brush;soloTool=null;toolStart=null;doRedrawAllStrokes();dq('.solo-tools-row').querySelectorAll('.solo-tool-btn').forEach(function(b){b.classList.remove('active');});});
 // tool selector
-var toolsRow=dq('.solo-tools-row');if(toolsRow)toolsRow.addEventListener('click',function(e){var btn=e.target.closest('.solo-tool-btn');if(!btn)return;toolsRow.querySelectorAll('.solo-tool-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');soloTool=btn.dataset.tool;toolStart=null;clearOv();doRedrawAllStrokes();dq('#solo-brushes').querySelectorAll('.solo-brush-btn').forEach(function(b){b.classList.remove('active');});soloCanvas.style.cursor=soloTool==='fill'?'cell':'crosshair';if(soloIsPanMode){soloIsPanMode=false;soloPanBtn.classList.remove('active');}});
+var toolsRow=dq('.solo-tools-row');if(toolsRow)toolsRow.addEventListener('click',function(e){var btn=e.target.closest('.solo-tool-btn');if(!btn)return;toolsRow.querySelectorAll('.solo-tool-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');soloTool=btn.dataset.tool;toolStart=null;doRedrawAllStrokes();dq('#solo-brushes').querySelectorAll('.solo-brush-btn').forEach(function(b){b.classList.remove('active');});soloCanvas.style.cursor=soloTool==='fill'?'cell':'crosshair';if(soloIsPanMode){soloIsPanMode=false;soloPanBtn.classList.remove('active');}});
 soloPanBtn.addEventListener('click',function(){soloIsPanMode=!soloIsPanMode;soloPanBtn.classList.toggle('active',soloIsPanMode);soloCanvas.style.cursor=soloIsPanMode?'grab':'crosshair';});
 soloSizeSlider.addEventListener('input',function(){soloSize=+soloSizeSlider.value;soloSizeVal.textContent=soloSize;});
 soloOpacitySlider.addEventListener('input',function(){soloOpacity=+soloOpacitySlider.value/100;soloOpacityVal.textContent=soloOpacitySlider.value;});
@@ -1432,14 +1416,14 @@ function getDailyWord(){
 function cancelSoloOperation(){
   soloDrawing=false;soloLastPos=null;soloPoints=[];
   soloPanning=false;soloLastPanX=0;soloLastPanY=0;
-  toolStart=null;clearOv();
+  toolStart=null;
 }
 
 function resetSoloState(){
   soloStrokes = []; soloUndoStack = [];
   soloCamX = 0; soloCamY = 0; soloCamZoom = 1;
   soloImmersed = false; soloToolbarCollapsed = false;
-  soloIsPanMode = false; soloTool=null; toolStart=null; clearOv();
+  soloIsPanMode = false; soloTool=null; toolStart=null;
   rainbowHue = Math.random()*360;
   soloScreen.classList.remove('immersed-full');
   var t = dq('#solo-top-bar'); if(t) t.classList.remove('immersed');
