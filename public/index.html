@@ -41,7 +41,7 @@
   <div id="lobby-screen" class="screen active">
     <div class="lobby-container">
       <h1 class="logo">🎨 你画我猜</h1>
-      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v8.9</span></p>
+      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v8.10</span></p>
       <button id="theme-toggle" class="theme-toggle" title="切换主题">🌓</button>
 
       <!-- 每日挑战卡片 -->
@@ -254,7 +254,7 @@
       <button id="solo-pan-btn" class="solo-bar-btn" title="拖拽/缩放画布">✋</button>
       <button id="solo-pigment-btn" class="solo-bar-btn" title="颜料混合模式：黄+青=绿 | 青+品红=蓝 | 品红+黄=红">🎨</button>
       <span class="solo-zoom-badge" id="solo-zoom-badge">100%</span>
-      <span class="version-tag" style="font-size:0.6rem;opacity:0.7">v8.9</span>
+      <span class="version-tag" style="font-size:0.6rem;opacity:0.7">v8.10</span>
       <button id="solo-immerse-btn" class="solo-bar-btn" title="沉浸模式">⛶</button>
     </div>
     <!-- 沉浸模式退出按钮 -->
@@ -266,11 +266,17 @@
     </div>
     <button id="solo-toggle-toolbar" class="solo-toggle-toolbar" title="折叠工具栏">▼</button>
     <div id="solo-toolbar">
-      <!-- v8.3 图层选择器 -->
+      <!-- v8.10 图层面板 — 按钮触发下拉 -->
       <div class="solo-row">
-        <span class="solo-label">图层</span>
-        <div class="layer-tabs" id="layer-tabs"></div>
-        <span class="layer-hint" id="layer-hint" style="font-size:0.6rem;color:var(--solo-muted)">点击切换 · ⇧隐藏 · 右键删除</span>
+        <button id="layer-panel-btn" class="layer-panel-btn" title="点击管理图层">
+          <span id="layer-panel-label">📑 图层1</span>
+          <span class="layer-panel-count" id="layer-panel-count">1/1</span>
+          <span class="layer-panel-arrow">▾</span>
+        </button>
+        <div class="layer-panel-dropdown hidden" id="layer-panel-dropdown">
+          <div class="layer-list" id="layer-list"></div>
+          <div class="layer-actions" id="layer-actions"></div>
+        </div>
       </div>
       <!-- 画笔类型 -->
       <div class="solo-row">
@@ -297,7 +303,7 @@
           <button class="solo-brush-btn eraser-btn" data-brush="eraser" title="擦除画面内容，还原白色背景"><span class="brush-icon">⌫</span><span class="brush-label">橡皮</span><span class="brush-desc">擦除还原</span></button>
         </div>
       </div>
-      <!-- 辅助工具行 v8.9 -->
+      <!-- 辅助工具行 v8.10 -->
       <div class="solo-row solo-tools-row">
         <button class="solo-tool-btn" data-tool="select" title="选择/移动贴图（点击选中，拖动移动，Delete删除）">🖱</button>
         <span class="tool-sep">|</span>
@@ -365,7 +371,7 @@
         <span id="achievements-count">0</span>🏆
       </div>
     </div>
-    <!-- v8.9 状态栏 -->
+    <!-- v8.10 状态栏 -->
     <div id="solo-status-bar" class="solo-status-bar">
       <span class="status-item" id="status-tool">✏️ 钢笔</span>
       <span class="status-sep">|</span>
@@ -376,6 +382,17 @@
       <span class="status-item" id="status-mode">🖌 普通</span>
       <span class="status-sep">|</span>
       <span class="status-item" id="status-zoom">🔍 100%</span>
+    </div>
+  </div>
+
+  <!-- 自定义确认弹窗 -->
+  <div id="confirm-dialog" class="confirm-overlay hidden">
+    <div class="confirm-box">
+      <p id="confirm-msg" class="confirm-msg"></p>
+      <div class="confirm-btns">
+        <button id="confirm-cancel" class="btn btn-secondary">取消</button>
+        <button id="confirm-ok" class="btn btn-primary">确定</button>
+      </div>
     </div>
   </div>
 
