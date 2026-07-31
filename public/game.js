@@ -1394,17 +1394,19 @@ var soloExitImmerse=dq('#solo-exit-immerse');
 if(soloImmerseBtn)soloImmerseBtn.addEventListener('click',function(){
   soloImmersed=true;
   var t=dq('#solo-top-bar');if(t)t.classList.add('immersed');
-  var tb=dq('#solo-toolbar');if(tb)tb.classList.add('immersed');
+  var tb=dq('#solo-toolbar');if(tb){tb.classList.add('immersed');tb.classList.remove('collapsed');}
   soloScreen.classList.add('immersed-full');
   if(soloExitImmerse)soloExitImmerse.classList.remove('hidden');
-  showToast('🔲 沉浸模式 — 点击左上角 ✕ 退出');
+  setTimeout(function(){initSoloCanvas();},100);
+  showToast('🔲 沉浸模式 — 画布已全屏，底部 ▼ 可唤出工具栏');
 });
 if(soloExitImmerse)soloExitImmerse.addEventListener('click',function(){
   soloImmersed=false;
   var t=dq('#solo-top-bar');if(t)t.classList.remove('immersed');
-  var tb=dq('#solo-toolbar');if(tb)tb.classList.remove('immersed');
+  var tb=dq('#solo-toolbar');if(tb){tb.classList.remove('immersed');tb.classList.remove('collapsed');}
   soloScreen.classList.remove('immersed-full');
   soloExitImmerse.classList.add('hidden');
+  setTimeout(function(){initSoloCanvas();},100);
 });
 // 工具栏折叠
 var soloToggleToolbar=dq('#solo-toggle-toolbar');
@@ -1412,10 +1414,18 @@ if(soloToggleToolbar)soloToggleToolbar.addEventListener('click',function(){
   soloToolbarCollapsed=!soloToolbarCollapsed;
   var tb=dq('#solo-toolbar');
   if(tb){
-    if(soloToolbarCollapsed){tb.classList.add('collapsed');soloToggleToolbar.textContent='▲';}
-    else{tb.classList.remove('collapsed');soloToggleToolbar.textContent='▼';}
+    if(soloToolbarCollapsed){
+      if(soloImmersed){tb.classList.add('immersed');}
+      else{tb.classList.add('collapsed');}
+      soloToggleToolbar.textContent='▲';
+    }else{
+      tb.classList.remove('collapsed');
+      tb.classList.remove('immersed');
+      soloToggleToolbar.textContent='▼';
+    }
   }
 });
+
 
 function initSoloCanvas(){
   var wrap=dq('#solo-canvas-wrap'),w=wrap.clientWidth,h=wrap.clientHeight;
