@@ -1117,25 +1117,32 @@ function doRedrawAllStrokes(){
   soloCtx.setTransform(dpr,0,0,dpr,0,0);
   soloCtx.clearRect(0,0,w,h);soloCtx.fillStyle='#FFFFFF';soloCtx.fillRect(0,0,w,h);
   soloCtx.translate(soloCamX,soloCamY);soloCtx.scale(soloCamZoom,soloCamZoom);
-  // v8.3: 逐层渲染（底层→顶层），fill-op/text 在序列中重新执行
-  for(var l=0;l<soloLayers.length;l++){
-    if(!soloLayers[l].visible)continue;
-    var strokes=soloLayers[l].strokes;
-    for(var i=0;i<strokes.length;i++){
-      var s=strokes[i];
-      if(s.brush==='fill-op'){executeStoredFill(s);}
-      else if(s.brush==='text'){renderTextStroke(s);}
-      else renderStroke(s);
-    }
+  // v8.7: 按 soloDrawOrder 顺序渲染（索引0=底层先画，末位=顶层后画）
+  if(!soloDrawOrder||!soloDrawOrder.length){
+    soloDrawOrder=[];
+    for(var li=0;li<soloLayers.length;li++)soloDrawOrder.push({type:'layer',idx:li});
+    for(var ii=0;ii<soloImages.length;ii++)soloDrawOrder.push({type:'image',idx:ii});
   }
-  // v8.7: 渲染图片对象（在所有图层之上）
-  for(var j=0;j<soloImages.length;j++){
-    var im=soloImages[j];
-    if(!im.visible)continue;
-    soloCtx.save();
-    soloCtx.globalAlpha=im.opacity||1;
-    soloCtx.drawImage(im.img,im.x,im.y,im.w,im.h);
-    soloCtx.restore();
+  for(var d=0;d<soloDrawOrder.length;d++){
+    var item=soloDrawOrder[d];
+    if(item.type==='layer'){
+      var layer=soloLayers[item.idx];
+      if(!layer||!layer.visible)continue;
+      var strokes=layer.strokes;
+      for(var i=0;i<strokes.length;i++){
+        var s=strokes[i];
+        if(s.brush==='fill-op'){executeStoredFill(s);}
+        else if(s.brush==='text'){renderTextStroke(s);}
+        else renderStroke(s);
+      }
+    }else if(item.type==='image'){
+      var im=soloImages[item.idx];
+      if(!im||!im.visible)continue;
+      soloCtx.save();
+      soloCtx.globalAlpha=im.opacity||1;
+      soloCtx.drawImage(im.img,im.x,im.y,im.w,im.h);
+      soloCtx.restore();
+    }
   }
   // v8.7: 渲染选中图片的选择框
   if(selectedImageId!==null&&activeTool==='select'){
@@ -1318,6 +1325,31 @@ function getBrushTip(color,size,hardness,brush){
   brushTipCache=c;brushTipCacheKey=key;return c;
 }
 function stampBrushTip(ctx,x,y,size,tip){if(!tip)return;var s=tip.width;ctx.drawImage(tip,x-s/2,y-s/2,s,s);}
+
+// v8.7: 重置单人模式状态
+function resetSoloState(){
+  soloLayers=[{name:'图层1',strokes:[],undoStack:[],visible:true}];
+  soloDrawOrder=[{type:'layer',idx:0}];soloActiveDrawIdx=0;
+  soloStrokes=soloLayers[0].strokes;soloUndoStack=soloLayers[0].undoStack;
+  soloCamX=0;soloCamY=0;soloCamZoom=1;
+  soloImmersed=false;soloToolbarCollapsed=false;
+  soloIsPanMode=false;soloPigmentMode=false;activeTool=null;toolStartPoint=null;toolDragging=false;toolPreviewPoint=null;
+  soloImages=[];selectedImageId=null;soloImageIdCounter=0;
+  rainbowHue=Math.random()*360;
+  soloScreen.classList.remove('immersed-full');
+  var t=dq('#solo-top-bar');if(t)t.classList.remove('immersed');
+  var tb=dq('#solo-toolbar');if(tb){tb.classList.remove('immersed');tb.classList.remove('collapsed');}
+  var eb=dq('#solo-exit-immerse');if(eb)eb.classList.add('hidden');
+  var bt=dq('#solo-toggle-toolbar');if(bt)bt.textContent='▼';
+  soloPanBtn.classList.remove('active');
+  var spb=dq('#solo-pigment-btn');if(spb)spb.classList.remove('active');
+  soloCanvas.style.cursor='crosshair';
+  dq('#solo-brushes').querySelectorAll('.solo-brush-btn').forEach(function(b){b.classList.remove('active');});
+  var firstBrush=dq('#solo-brushes').querySelector('.solo-brush-btn');
+  if(firstBrush){firstBrush.classList.add('active');soloBrush=firstBrush.dataset.brush;}
+  dq('.solo-tools-row').querySelectorAll('.solo-tool-btn').forEach(function(b){b.classList.remove('active');});
+  updateStatusBar();
+}
 
 function initSoloCanvas(){
   var wrap=dq('#solo-canvas-wrap'),w=wrap.clientWidth,h=wrap.clientHeight;
@@ -1751,6 +1783,8 @@ soloSaveBtn.addEventListener('click',function(){var a=document.createElement('a'
 	        soloImageIdCounter++;
 	        var imgObj={id:'img_'+soloImageIdCounter,img:img,x:wx,y:wy,w:iw,h:ih,visible:true,locked:false,opacity:1};
 	        soloImages.push(imgObj);
+        soloDrawOrder.push({type:'image',idx:soloImages.length-1});
+		soloActiveDrawIdx=soloDrawOrder.length-1;
 	        selectedImageId=imgObj.id;
 	        if(activeTool!=='select'){activeTool='select';
 	          dq('.solo-tools-row').querySelectorAll('.solo-tool-btn').forEach(function(b){b.classList.remove('active');});
@@ -1771,33 +1805,97 @@ function updateUndoRedoBtns(){soloUndoBtn.disabled=!soloStrokes.length;soloRedoB
 
 // ============ v8.3 图层管理 ============
 function switchLayer(idx){
-  if(idx===soloActiveLayer||idx<0||idx>=soloLayers.length)return;
-  soloActiveLayer=idx;
-  soloStrokes=soloLayers[idx].strokes;
-  soloUndoStack=soloLayers[idx].undoStack;
-  doRedrawAllStrokes();updateUndoRedoBtns();updateLayerUI();updateStatusBar();
+  // v8.7: 找到 drawOrder 中该图层的第一个位置并切换
+  for(var i=0;i<soloDrawOrder.length;i++){
+    if(soloDrawOrder[i].type==='layer'&&soloDrawOrder[i].idx===idx){switchToDrawItem(i);return;}
+  }
 }
 function addLayer(){
   if(soloLayers.length>=5){showToast('最多5个图层');return;}
   var n=soloLayers.length+1;
   soloLayers.push({name:'图层'+n,strokes:[],undoStack:[],visible:true});
-  soloActiveLayer=soloLayers.length-1;
-  soloStrokes=soloLayers[soloActiveLayer].strokes;
-  soloUndoStack=soloLayers[soloActiveLayer].undoStack;
+  var newIdx=soloLayers.length-1;
+  soloDrawOrder.push({type:'layer',idx:newIdx});
+  soloActiveDrawIdx=soloDrawOrder.length-1;
+  soloStrokes=soloLayers[newIdx].strokes;
+  soloUndoStack=soloLayers[newIdx].undoStack;
   doRedrawAllStrokes();updateUndoRedoBtns();updateLayerUI();updateStatusBar();
   showToast('✅ 已添加图层'+n);
 }
 function deleteLayer(idx){
   if(soloLayers.length<=1){showToast('至少保留1个图层');return;}
+  // v8.7: 从 drawOrder 移除，修复索引
+  for(var i=soloDrawOrder.length-1;i>=0;i--){
+    if(soloDrawOrder[i].type==='layer'&&soloDrawOrder[i].idx===idx)soloDrawOrder.splice(i,1);
+    else if(soloDrawOrder[i].type==='layer'&&soloDrawOrder[i].idx>idx)soloDrawOrder[i].idx--;
+  }
   soloLayers.splice(idx,1);
-  if(soloActiveLayer>=soloLayers.length)soloActiveLayer=soloLayers.length-1;
-  soloStrokes=soloLayers[soloActiveLayer].strokes;
-  soloUndoStack=soloLayers[soloActiveLayer].undoStack;
+  // 找最近图层
+  for(var i=soloDrawOrder.length-1;i>=0;i--){
+    if(soloDrawOrder[i].type==='layer'){soloActiveDrawIdx=i;break;}
+  }
+  if(soloActiveDrawIdx>=0&&soloActiveDrawIdx<soloDrawOrder.length){
+    var ci=soloDrawOrder[soloActiveDrawIdx];
+    if(ci&&ci.type==='layer'){soloStrokes=soloLayers[ci.idx].strokes;soloUndoStack=soloLayers[ci.idx].undoStack;}
+  }
   doRedrawAllStrokes();updateUndoRedoBtns();updateLayerUI();updateStatusBar();
 }
 function toggleLayerVisibility(idx){
   soloLayers[idx].visible=!soloLayers[idx].visible;
   doRedrawAllStrokes();updateLayerUI();
+}
+// v8.7: 新增函数 — updateLayerUI 依赖这些
+function toggleImageVisibility(imgIdx){
+  soloImages[imgIdx].visible=!soloImages[imgIdx].visible;
+  doRedrawAllStrokes();updateLayerUI();
+}
+function deleteImageItem(imgIdx){
+  if(!confirm('删除这张贴图？'))return;
+  var imgId=soloImages[imgIdx].id;
+  if(selectedImageId===imgId)selectedImageId=null;
+  for(var i=soloDrawOrder.length-1;i>=0;i--){
+    if(soloDrawOrder[i].type==='image'&&soloDrawOrder[i].idx===imgIdx)soloDrawOrder.splice(i,1);
+    else if(soloDrawOrder[i].type==='image'&&soloDrawOrder[i].idx>imgIdx)soloDrawOrder[i].idx--;
+  }
+  soloImages.splice(imgIdx,1);
+  if(soloActiveDrawIdx>=soloDrawOrder.length)soloActiveDrawIdx=soloDrawOrder.length-1;
+  var ci=soloDrawOrder[soloActiveDrawIdx];
+  if(ci&&ci.type==='layer'){soloStrokes=soloLayers[ci.idx].strokes;soloUndoStack=soloLayers[ci.idx].undoStack;}
+  doRedrawAllStrokes();updateLayerUI();updateStatusBar();showToast('🗑 已删除贴图');
+}
+function switchToDrawItem(drawIdx){
+  if(drawIdx<0||drawIdx>=soloDrawOrder.length)return;
+  var item=soloDrawOrder[drawIdx];
+  if(item.type==='image'){
+    selectedImageId=soloImages[item.idx].id;
+    if(activeTool!=='select'){
+      activeTool='select';
+      dq('.solo-tools-row').querySelectorAll('.solo-tool-btn').forEach(function(b){b.classList.remove('active');});
+      var sb=dq('.solo-tools-row').querySelector('[data-tool=\"select\"]');if(sb)sb.classList.add('active');
+      dq('#solo-brushes').querySelectorAll('.solo-brush-btn').forEach(function(b){b.classList.remove('active');});
+      soloCanvas.style.cursor='default';
+    }
+    soloActiveDrawIdx=drawIdx;doRedrawAllStrokes();updateLayerUI();updateStatusBar();return;
+  }
+  if(drawIdx===soloActiveDrawIdx)return;
+  soloActiveDrawIdx=drawIdx;
+  var layer=soloLayers[item.idx];
+  soloStrokes=layer.strokes;soloUndoStack=layer.undoStack;
+  if(activeTool==='select'){activeTool=null;soloCanvas.style.cursor='crosshair';}
+  doRedrawAllStrokes();updateUndoRedoBtns();updateLayerUI();updateStatusBar();
+}
+function moveDrawOrderItem(fromDrawIdx,toDrawIdx){
+  if(fromDrawIdx===toDrawIdx||fromDrawIdx<0||fromDrawIdx>=soloDrawOrder.length||toDrawIdx<0||toDrawIdx>=soloDrawOrder.length)return;
+  var item=soloDrawOrder.splice(fromDrawIdx,1)[0];
+  soloDrawOrder.splice(toDrawIdx,0,item);
+  if(soloActiveDrawIdx===fromDrawIdx)soloActiveDrawIdx=toDrawIdx;
+  else if(fromDrawIdx<soloActiveDrawIdx&&toDrawIdx>=soloActiveDrawIdx)soloActiveDrawIdx--;
+  else if(fromDrawIdx>soloActiveDrawIdx&&toDrawIdx<=soloActiveDrawIdx)soloActiveDrawIdx++;
+  if(soloActiveDrawIdx<0)soloActiveDrawIdx=0;
+  if(soloActiveDrawIdx>=soloDrawOrder.length)soloActiveDrawIdx=soloDrawOrder.length-1;
+  var ci=soloDrawOrder[soloActiveDrawIdx];
+  if(ci&&ci.type==='layer'){soloStrokes=soloLayers[ci.idx].strokes;soloUndoStack=soloLayers[ci.idx].undoStack;}
+  doRedrawAllStrokes();updateLayerUI();updateStatusBar();
 }
 // v8.7 图层排序
 function moveLayer(fromIdx,toIdx){
