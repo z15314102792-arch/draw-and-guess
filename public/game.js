@@ -1091,15 +1091,15 @@ function doRedrawAllStrokes(){
   var w=parseFloat(soloCanvas.style.width),h=parseFloat(soloCanvas.style.height);
   var dpr=window.devicePixelRatio||1;
   soloCtx.setTransform(dpr,0,0,dpr,0,0);
-  soloCtx.clearRect(0,0,w,h);
-  // 查找最近的 checkpoint（fill 操作产生的光栅化快照）
-  var checkpointIdx=-1;
-  for(var i=soloStrokes.length-1;i>=0;i--){if(soloStrokes[i].brush==='checkpoint'){checkpointIdx=i;break;}}
-  if(checkpointIdx>=0){soloCtx.putImageData(soloStrokes[checkpointIdx].imageData,0,0);}
-  else{soloCtx.fillStyle='#FFFFFF';soloCtx.fillRect(0,0,w,h);}
+  soloCtx.clearRect(0,0,w,h);soloCtx.fillStyle='#FFFFFF';soloCtx.fillRect(0,0,w,h);
   soloCtx.translate(soloCamX,soloCamY);soloCtx.scale(soloCamZoom,soloCamZoom);
-  var startFrom=checkpointIdx>=0?checkpointIdx+1:0;
-  for(var i=startFrom;i<soloStrokes.length;i++)renderStroke(soloStrokes[i]);
+  // v8.2: 逐笔画渲染，fill-op/text 在序列中重新执行（自然跟随缩放）
+  for(var i=0;i<soloStrokes.length;i++){
+    var s=soloStrokes[i];
+    if(s.brush==='fill-op'){executeStoredFill(s);}
+    else if(s.brush==='text'){renderTextStroke(s);}
+    else renderStroke(s);
+  }
   // 形状预览
   if(toolDragging&&toolStartPoint&&toolPreviewPoint)drawToolPreview(toolStartPoint,toolPreviewPoint,activeTool);
 }
@@ -1123,27 +1123,30 @@ function finalizeToolShape(from,to,tool){
   else if(tool==='triangle'){var mx=(from.x+to.x)/2;ctx.beginPath();ctx.moveTo(mx,from.y);ctx.lineTo(to.x,to.y);ctx.lineTo(from.x,to.y);ctx.closePath();ctx.stroke();}
   ctx.restore();
 }
+// v8.2: 存储填充参数而非光栅快照，重绘时重新执行 → 跟随缩放
 function toolFillAction(wx,wy){
   var w=soloCanvas.width,h=soloCanvas.height,dpr=window.devicePixelRatio||1;
   var px=Math.round((wx*soloCamZoom+soloCamX)*dpr),py=Math.round((wy*soloCamZoom+soloCamY)*dpr);
   if(px<0||px>=w||py<0||py>=h){showToast('点击位置超出画布');return;}
   var id=soloCtx.getImageData(0,0,w,h),d=id.data,idx=(py*w+px)*4;
   var tr=d[idx],tg=d[idx+1],tb=d[idx+2];
-  if(tr>248&&tg>248&&tb>248){showToast('请在封闭区域内点击');return;}
+  // 宽松白色检测：几乎纯白才拒绝（允许填充浅色区域）
+  if(tr>252&&tg>252&&tb>252){showToast('💡 点击的是空白区域，请点击有颜色的封闭区域');return;}
   var fc={r:parseInt(soloColor.slice(1,3),16),g:parseInt(soloColor.slice(3,5),16),b:parseInt(soloColor.slice(5,7),16)};
-  var stack=[[px,py]],vis=new Uint8Array(w*h),tol=32,count=0,lim=Math.floor(w*h/3);
+  var stack=[[px,py]],vis=new Uint8Array(w*h),tol=40,count=0,lim=Math.floor(w*h/2);
   while(stack.length&&count<lim){
     var p=stack.pop(),x=p[0],y=p[1];
     if(x<0||x>=w||y<0||y>=h)continue;var vi=y*w+x;if(vis[vi])continue;var di=vi*4;
     if(Math.abs(d[di]-tr)>tol||Math.abs(d[di+1]-tg)>tol||Math.abs(d[di+2]-tb)>tol)continue;
     vis[vi]=1;d[di]=fc.r;d[di+1]=fc.g;d[di+2]=fc.b;d[di+3]=255;stack.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);count++;
   }
-  if(count>=lim){showToast('区域过大已取消');return;}
+  if(count>=lim){showToast('⚠️ 填充区域过大已取消（上限'+lim+'像素）');return;}
+  if(count===0){showToast('💡 未找到可填充区域，请确保点击位置周围有连续颜色');return;}
   soloCtx.putImageData(id,0,0);
-  // 保存 checkpoint，让填充结果持久化
-  var checkpoint=soloCtx.getImageData(0,0,w,h);
-  soloUndoStack=[];soloStrokes.push({brush:'checkpoint',imageData:checkpoint});
-  updateUndoRedoBtns();showToast('已填充 '+count+' 像素');
+  // 存储填充参数，重绘时重新执行（自然跟随缩放）
+  soloUndoStack=[];
+  soloStrokes.push({brush:'fill-op',fillColor:soloColor,targetR:tr,targetG:tg,targetB:tb,worldX:wx,worldY:wy,tolerance:tol});
+  updateUndoRedoBtns();showToast('✅ 已填充 '+count+' 像素 — 缩放时自动适配');
 }
 function toolPickAction(wx,wy){
   var w=soloCanvas.width,dpr=window.devicePixelRatio||1;
@@ -1155,26 +1158,56 @@ function toolPickAction(wx,wy){
   document.querySelectorAll('.solo-color-btn').forEach(function(b){b.classList.remove('active');});
   brushTipCache=null;showToast('取色：'+hex);
 }
+// v8.2: 文字存储为矢量笔画，重绘时重新渲染 → 跟随缩放
 function toolTextAction(wx,wy){
   var text=prompt('输入文字（最多10个字）：','');
   if(!text||!text.trim())return;
   text=text.trim().slice(0,10);
+  // 立即绘制
   var ctx=soloCtx,dpr=window.devicePixelRatio||1;
-  ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.scale(dpr,dpr);
+  ctx.save();ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.translate(soloCamX,soloCamY);ctx.scale(soloCamZoom,soloCamZoom);
   ctx.font='bold '+(soloSize*8)+'px "PingFang SC","Microsoft YaHei",sans-serif';
   ctx.fillStyle=soloColor;ctx.globalAlpha=soloOpacity;
   ctx.fillText(text,wx,wy);
   ctx.restore();
-  // 文字渲染后保存 checkpoint 以持久化
-  var cw=soloCanvas.width,ch=soloCanvas.height;
-  var cp=soloCtx.getImageData(0,0,cw,ch);
-  soloUndoStack=[];soloStrokes.push({brush:'checkpoint',imageData:cp});
-  updateUndoRedoBtns();showToast('已添加文字：'+text);
+  // 存储矢量笔画（重绘时自动跟随缩放）
+  soloUndoStack=[];
+  soloStrokes.push({brush:'text',text:text,worldX:wx,worldY:wy,fontSize:soloSize*8,color:soloColor,opacity:soloOpacity});
+  updateUndoRedoBtns();showToast('✅ 已添加文字：'+text+' — 缩放时自动适配');
+}
+
+// v8.2: 重绘时重新执行填充（基于当前画布像素 + 当前缩放 → 自然适配）
+function executeStoredFill(s){
+  var w=soloCanvas.width,h=soloCanvas.height,dpr=window.devicePixelRatio||1;
+  var px=Math.round((s.worldX*soloCamZoom+soloCamX)*dpr);
+  var py=Math.round((s.worldY*soloCamZoom+soloCamY)*dpr);
+  if(px<0||px>=w||py<0||py>=h)return;
+  var id=soloCtx.getImageData(0,0,w,h),d=id.data,idx=(py*w+px)*4;
+  var tr=d[idx],tg=d[idx+1],tb=d[idx+2];
+  // 检查点击位置颜色是否与存储的目标色匹配（允许容差）
+  if(Math.abs(d[idx]-s.targetR)>s.tolerance||Math.abs(d[idx+1]-s.targetG)>s.tolerance||Math.abs(d[idx+2]-s.targetB)>s.tolerance)return;
+  var fc={r:parseInt(s.fillColor.slice(1,3),16),g:parseInt(s.fillColor.slice(3,5),16),b:parseInt(s.fillColor.slice(5,7),16)};
+  var stack=[[px,py]],vis=new Uint8Array(w*h),count=0,lim=Math.floor(w*h/2);
+  while(stack.length&&count<lim){
+    var p=stack.pop(),x=p[0],y=p[1];
+    if(x<0||x>=w||y<0||y>=h)continue;var vi=y*w+x;if(vis[vi])continue;var di=vi*4;
+    if(Math.abs(d[di]-tr)>s.tolerance||Math.abs(d[di+1]-tg)>s.tolerance||Math.abs(d[di+2]-tb)>s.tolerance)continue;
+    vis[vi]=1;d[di]=fc.r;d[di+1]=fc.g;d[di+2]=fc.b;d[di+3]=255;stack.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);count++;
+  }
+  if(count<lim)soloCtx.putImageData(id,0,0);
+}
+// v8.2: 矢量文字渲染
+function renderTextStroke(s){
+  soloCtx.save();
+  soloCtx.font='bold '+s.fontSize+'px "PingFang SC","Microsoft YaHei",sans-serif';
+  soloCtx.fillStyle=s.color; soloCtx.globalAlpha=s.opacity||1;
+  soloCtx.fillText(s.text,s.worldX,s.worldY);
+  soloCtx.restore();
 }
 
 function getBrushTip(color,size,hardness,brush){
-  if(brush==='eraser'||brush==='spray'||brush==='calligraphy'||brush==='pencil'||brush==='crayon'||brush==='rainbow'||brush==='splatter'||brush==='neon'||brush==='pixel'||brush==='mirror'||brush==='kaleidoscope'||brush==='sponge'||brush==='glitch'||brush==='invert'||brush==='charcoal'||brush==='screen'||brush==='checkpoint'||brush&&brush.indexOf('shape-')===0)return null;
+  if(brush==='eraser'||brush==='spray'||brush==='calligraphy'||brush==='pencil'||brush==='crayon'||brush==='rainbow'||brush==='splatter'||brush==='neon'||brush==='pixel'||brush==='mirror'||brush==='kaleidoscope'||brush==='sponge'||brush==='glitch'||brush==='invert'||brush==='charcoal'||brush==='screen'||brush==='fill-op'||brush==='text'||brush&&brush.indexOf('shape-')===0)return null;
   var key=color+'-'+size+'-'+hardness.toFixed(2)+'-'+brush;
   if(brushTipCache&&brushTipCacheKey===key)return brushTipCache;
   var s=Math.ceil(size*2)+4,c=document.createElement('canvas');c.width=s;c.height=s;
@@ -1334,8 +1367,7 @@ function renderStroke(stroke){
     else if(stroke.brush==='shape-triangle'){var mx=(sd.x1+sd.x2)/2;ctx.beginPath();ctx.moveTo(mx,sd.y1);ctx.lineTo(sd.x2,sd.y2);ctx.lineTo(sd.x1,sd.y2);ctx.closePath();ctx.stroke();}
     ctx.restore();return;
   }
-  // checkpoint 是光栅化快照，已在 doRedrawAllStrokes 中处理，此处跳过
-  if(stroke.brush==='checkpoint'){ctx.restore();return;}
+  // fill-op 和 text 在 doRedrawAllStrokes 中单独处理，此处跳过
   ctx.lineWidth=stroke.size;ctx.strokeStyle=stroke.color;
   if(tip){for(var i=0;i<pts.length;i++)stampBrushTip(ctx,pts[i].x,pts[i].y,stroke.size,tip);for(var i=1;i<pts.length;i++){var dx=pts[i].x-pts[i-1].x,dy=pts[i].y-pts[i-1].y,dist=Math.sqrt(dx*dx+dy*dy);for(var s=1;s<Math.ceil(dist/(stroke.size*0.3));s++){var t=s/Math.ceil(dist/(stroke.size*0.3));stampBrushTip(ctx,pts[i-1].x+dx*t,pts[i-1].y+dy*t,stroke.size,tip);}}}
   else{for(var i=1;i<pts.length;i++){ctx.beginPath();ctx.moveTo(pts[i-1].x,pts[i-1].y);ctx.lineTo(pts[i].x,pts[i].y);ctx.stroke();}}
@@ -1749,4 +1781,4 @@ function updateAchievementBadge(){
   }, 2000);
 })();
 
-console.log('🎨 你画我猜 v8.1 - 前端就绪');
+console.log('🎨 你画我猜 v8.2 - 前端就绪');
