@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>你画我猜</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    // 防闪烁：页面渲染前读取主题
+    var t = localStorage.getItem('solo-theme') || 'light';
+    document.documentElement.setAttribute('data-theme', t);
+  </script>
+</head>
+<body>
+
+  <!-- ====== 微信浏览器提示层 ====== -->
+  <div id="wechat-tip" class="wechat-overlay hidden">
+    <div class="wechat-guide">
+      <div class="wechat-icon">⚠️</div>
+      <h2>请在浏览器中打开</h2>
+      <p class="wechat-reason">微信内置浏览器不支持实时通信，无法正常运行游戏</p>
+      <div class="wechat-steps">
+        <div class="wechat-step">
+          <span class="step-num">1</span>
+          <span>点击右上角 <strong>「···」</strong></span>
+        </div>
+        <div class="wechat-step">
+          <span class="step-num">2</span>
+          <span>选择 <strong>「在浏览器中打开」</strong></span>
+        </div>
+      </div>
+      <button id="wechat-copy-btn" class="btn btn-primary btn-block">📋 复制链接</button>
+      <p id="wechat-url" class="wechat-url"></p>
+    </div>
+  </div>
+
+  <!-- ====== 加入/创建房间页 ====== -->
+  <div id="lobby-screen" class="screen active">
+    <div class="lobby-container">
+      <h1 class="logo">🎨 你画我猜</h1>
+      <p class="subtitle">和朋友一起画画猜词！<span class="version-tag">v8.13</span></p>
+      <button id="theme-toggle" class="theme-toggle" title="切换主题">🌓</button>
+
+      <!-- 每日挑战卡片 -->
+      <button id="daily-challenge-btn" class="btn btn-daily btn-block">
+        <span class="daily-btn-icon">📅</span>
+        <span class="daily-btn-text">每日挑战</span>
+        <span class="daily-btn-word" id="daily-btn-word"></span>
+      </button>
+
+      <div class="form-group">
+        <label>你的昵称</label>
+        <input id="nickname-input" type="text" placeholder="输入昵称" maxlength="8" autocomplete="off">
+      </div>
+
+      <button id="create-room-btn" class="btn btn-primary btn-block">🏠 创建房间</button>
+
+      <div class="divider"><span>或</span></div>
+
+      <button id="solo-mode-btn" class="btn btn-solo btn-block">🎨 单人创作</button>
+
+      <div class="divider"><span>或</span></div>
+
+      <div class="form-group">
+        <label>输入房间号加入</label>
+        <div class="join-row">
+          <input id="room-code-input" type="text" placeholder="房间号" maxlength="4" autocomplete="off" style="text-transform: uppercase;">
+          <button id="join-room-btn" class="btn btn-secondary">加入</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 游戏主界面 ====== -->
+  <div id="game-screen" class="screen">
+
+    <!-- 顶部信息栏 -->
+    <div id="top-bar">
+      <div class="top-left">
+        <button id="menu-btn" class="icon-btn" title="菜单">☰</button>
+        <span class="room-badge">🏠 <span id="room-code-display"></span></span>
+      </div>
+      <div class="top-center">
+        <span id="round-info"></span>
+      </div>
+      <div class="top-right">
+        <span id="timer-display" class="timer">⏱ 60</span>
+      </div>
+    </div>
+
+    <!-- 画板区域 -->
+    <div id="canvas-area">
+      <!-- 画家可见：选词面板 -->
+      <div id="word-select-panel" class="hidden">
+        <p class="word-select-title">选择一个词来画：</p>
+        <div id="word-options"></div>
+        <p class="word-select-timer">⏱ <span id="word-select-countdown">15</span>秒</p>
+      </div>
+
+      <!-- 提示条 -->
+      <div id="word-hint-bar" class="hidden">
+        <span id="word-hint-text"></span>
+      </div>
+
+      <!-- Canvas -->
+      <canvas id="draw-canvas"></canvas>
+      <!-- 浮动表情容器 v8.0 -->
+      <div id="floating-reactions"></div>
+      <!-- 接龙提交按钮 -->
+      <button id="chain-submit-btn" class="btn btn-accent btn-block hidden" style="margin-top:8px">✅ 提交画作</button>
+      <!-- 接龙猜词面板 -->
+      <div id="chain-guess-panel" class="hidden" style="display:flex;gap:8px;margin-top:8px">
+        <input id="chain-guess-input" type="text" placeholder="输入你猜的词..." maxlength="20" autocomplete="off" style="flex:1">
+        <button id="chain-guess-submit-btn" class="btn btn-primary">提交</button>
+      </div>
+    </div>
+
+    <!-- 工具栏（画者可见 / 等待时所有人可见） -->
+    <div id="toolbar" class="hidden">
+      <div class="toolbar-row colors-row">
+        <button class="color-btn active" data-color="#000000" style="background:#000000"></button>
+        <button class="color-btn" data-color="#E74C3C" style="background:#E74C3C"></button>
+        <button class="color-btn" data-color="#E67E22" style="background:#E67E22"></button>
+        <button class="color-btn" data-color="#F1C40F" style="background:#F1C40F"></button>
+        <button class="color-btn" data-color="#2ECC71" style="background:#2ECC71"></button>
+        <button class="color-btn" data-color="#3498DB" style="background:#3498DB"></button>
+        <button class="color-btn" data-color="#9B59B6" style="background:#9B59B6"></button>
+        <button class="color-btn" data-color="#795548" style="background:#795548"></button>
+        <input type="color" id="custom-color" class="custom-color-input" value="#000000" title="自定义颜色">
+      </div>
+      <div class="toolbar-row tools-row">
+        <button id="tool-pen" class="tool-btn active">✏️</button>
+        <button id="tool-eraser" class="tool-btn">🧹</button>
+        <div class="size-group">
+          <button class="size-btn" data-size="1"><span class="size-dot" style="width:3px;height:3px"></span></button>
+          <button class="size-btn active" data-size="3"><span class="size-dot" style="width:6px;height:6px"></span></button>
+          <button class="size-btn" data-size="6"><span class="size-dot" style="width:10px;height:10px"></span></button>
+          <button class="size-btn" data-size="9"><span class="size-dot" style="width:14px;height:14px"></span></button>
+          <button class="size-btn" data-size="14"><span class="size-dot" style="width:20px;height:20px"></span></button>
+        </div>
+        <button id="btn-clear" class="tool-btn danger">✕</button>
+      </div>
+    </div>
+
+    <!-- 等待房间底栏（可折叠） -->
+    <div id="waiting-bar">
+      <div class="waiting-bar-collapsed" id="waiting-bar-collapsed">
+        <span id="waiting-bar-status">🟢 等待好友加入...</span>
+        <span class="waiting-bar-count" id="waiting-bar-count">1人</span>
+        <button id="waiting-expand-btn" class="icon-btn-sm">▲</button>
+      </div>
+      <div class="waiting-bar-expanded hidden" id="waiting-bar-expanded">
+        <div class="waiting-expand-header">
+          <span class="waiting-title-sm">📢 邀请好友</span>
+          <button id="waiting-collapse-btn" class="icon-btn-sm">▼</button>
+        </div>
+        <div class="room-code-row">
+          <span class="room-code-label-sm">房间号</span>
+          <span id="room-code-big" class="room-code-value-sm">----</span>
+          <button id="copy-room-btn" class="btn btn-sm btn-secondary">📋 复制</button>
+        </div>
+        <!-- 模式选择器（仅房主可操作） -->
+        <div class="mode-selector">
+          <div class="mode-options">
+            <button class="mode-btn active" data-mode="classic">🎨 经典</button>
+            <button class="mode-btn" data-mode="speed">⚡ 快速</button>
+            <button class="mode-btn" data-mode="blind">🙈 盲画</button>
+            <button class="mode-btn" data-mode="chain">🔗 接龙</button>
+            <button class="mode-btn" data-mode="team">👥 团队</button>
+            <button class="mode-btn" data-mode="duel">🏆 对决</button>
+          </div>
+          <p id="mode-desc" class="mode-desc">经典模式：轮流画词猜词，60秒一回合</p>
+        </div>
+        <p id="waiting-player-count" class="waiting-count-sm">当前 1 人（至少需要 2 人）</p>
+        <p class="waiting-doodle-hint-sm">💡 等待时可以随意涂鸦</p>
+        <!-- 自定义词库 -->
+        <div class="custom-words-section">
+          <button id="custom-words-toggle" class="btn btn-sm btn-secondary btn-block" style="font-size:0.75rem">📝 自定义词库 ▸</button>
+          <div id="custom-words-panel" class="hidden" style="margin-top:8px">
+            <textarea id="custom-words-input" placeholder="每行一个词，至少10个&#10;例如：&#10;苹果&#10;香蕉&#10;西瓜&#10;..." rows="4" style="width:100%;border-radius:8px;border:1px solid var(--solo-border);padding:8px;font-size:0.8rem;background:var(--solo-bg);color:var(--solo-text);resize:vertical"></textarea>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <button id="custom-words-save" class="btn btn-sm btn-primary" style="flex:1">保存词库</button>
+              <button id="custom-words-share" class="btn btn-sm btn-secondary">📋 分享</button>
+              <button id="custom-words-load" class="btn btn-sm btn-secondary">📥 加载</button>
+            </div>
+            <input id="custom-words-code" type="text" placeholder="粘贴词包码..." style="width:100%;margin-top:4px;border-radius:6px;border:1px solid var(--solo-border);padding:6px;font-size:0.75rem;background:var(--solo-bg);color:var(--solo-text)">
+          </div>
+        </div>
+        <button id="start-game-btn" class="btn btn-primary btn-block hidden">🎮 开始游戏</button>
+      </div>
+    </div>
+
+    <!-- 接龙揭晓面板 -->
+    <div id="chain-reveal-panel" class="chain-reveal-panel hidden"></div>
+
+    <!-- 底部操作区（游戏中可见） -->
+    <div id="bottom-area">
+      <div id="chat-messages"></div>
+      <!-- 快捷表情反应 v8.0 -->
+      <div id="reactions-bar" class="reactions-bar">
+        <button class="reaction-btn" data-emoji="😂">😂</button>
+        <button class="reaction-btn" data-emoji="👏">👏</button>
+        <button class="reaction-btn" data-emoji="🔥">🔥</button>
+        <button class="reaction-btn" data-emoji="🤔">🤔</button>
+        <button class="reaction-btn" data-emoji="💀">💀</button>
+        <button class="reaction-btn" data-emoji="🎯">🎯</button>
+        <button class="reaction-btn" data-emoji="❤️">❤️</button>
+      </div>
+      <div id="guess-bar" class="hidden">
+        <input id="guess-input" type="text" placeholder="输入你猜的词..." maxlength="20" autocomplete="off">
+        <button id="send-guess-btn" class="btn btn-primary">发送</button>
+      </div>
+      <button id="play-again-btn" class="btn btn-primary btn-block hidden">🔄 再来一局</button>
+    </div>
+
+    <!-- 侧滑菜单 -->
+    <div id="slide-menu" class="slide-menu">
+      <div class="slide-menu-header">
+        <span>菜单</span>
+        <button id="close-menu-btn" class="icon-btn">✕</button>
+      </div>
+      <div class="slide-menu-body">
+        <div class="menu-section-label">玩家 (<span id="menu-player-count">0</span>)</div>
+        <ul id="player-list"></ul>
+        <div class="menu-divider"></div>
+        <button id="btn-back-lobby" class="menu-item">🏠 返回大厅</button>
+        <button id="btn-leave-room" class="menu-item danger">🚪 退出房间</button>
+      </div>
+    </div>
+    <div id="menu-overlay" class="menu-overlay hidden"></div>
+
+    <!-- 得分弹窗 -->
+    <div id="score-popup" class="overlay hidden">
+      <div class="overlay-box score-box">
+        <h2 id="score-title"></h2>
+        <div id="score-body"></div>
+        <button id="score-close-btn" class="btn btn-primary">继续</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Toast 提示（全局，不受屏幕切换影响） -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- ====== 单人创作模式 ====== -->
+  <div id="solo-screen" class="screen">
+    <div id="solo-top-bar" class="solo-top-bar">
+      <button id="solo-back-btn" class="solo-bar-btn" title="返回大厅">←</button>
+      <span class="solo-title">🎨 单人创作</span>
+      <button id="solo-pan-btn" class="solo-bar-btn" title="拖拽/缩放画布">✋</button>
+      <button id="solo-pigment-btn" class="solo-bar-btn" title="颜料混合模式：黄+青=绿 | 青+品红=蓝 | 品红+黄=红">🎨</button>
+      <span class="solo-zoom-badge" id="solo-zoom-badge">100%</span>
+      <span class="version-tag" style="font-size:0.6rem;opacity:0.7">v8.13</span>
+      <button id="solo-immerse-btn" class="solo-bar-btn" title="沉浸模式">⛶</button>
+    </div>
+    <!-- 沉浸模式退出按钮 -->
+    <button id="solo-exit-immerse" class="solo-exit-immerse hidden" title="退出沉浸模式">✕</button>
+    <div id="solo-canvas-wrap">
+      <canvas id="solo-canvas"></canvas>
+      <div id="solo-zoom-hint" class="solo-zoom-hint hidden">双指缩放 / 双指拖动</div>
+      <div id="solo-hint-viewer" class="solo-hint-viewer"></div>
+    </div>
+    <button id="solo-toggle-toolbar" class="solo-toggle-toolbar" title="折叠工具栏">▼</button>
+    <div id="solo-toolbar">
+      <!-- v8.13 图层面板 — 按钮触发下拉 -->
+      <div class="solo-row">
+        <button id="layer-panel-btn" class="layer-panel-btn" title="点击管理图层">
+          <span id="layer-panel-label">📑 图层1</span>
+          <span class="layer-panel-count" id="layer-panel-count">1/1</span>
+          <span class="layer-panel-arrow">▾</span>
+        </button>
+        <div class="layer-panel-dropdown hidden" id="layer-panel-dropdown">
+          <div class="layer-list" id="layer-list"></div>
+          <div class="layer-actions" id="layer-actions"></div>
+        </div>
+      </div>
+      <!-- 画笔类型 -->
+      <div class="solo-row">
+        <div class="solo-brushes" id="solo-brushes">
+          <button class="solo-brush-btn active" data-brush="pen" title="流畅线条，带笔锋渐变"><span class="brush-icon">—</span><span class="brush-label">钢笔</span><span class="brush-desc">流畅笔锋</span></button>
+          <button class="solo-brush-btn" data-brush="pencil" title="模拟真实铅笔纹理，带细微抖动"><span class="brush-icon">╱</span><span class="brush-label">铅笔</span><span class="brush-desc">纹理抖动</span></button>
+          <button class="solo-brush-btn" data-brush="marker" title="半透明叠加，涂色不盖线"><span class="brush-icon">◼</span><span class="brush-label">马克</span><span class="brush-desc">半透明叠加</span></button>
+          <button class="solo-brush-btn" data-brush="spray" title="喷雾状细腻颗粒，均匀散布"><span class="brush-icon">❇</span><span class="brush-label">喷枪</span><span class="brush-desc">细腻颗粒</span></button>
+          <button class="solo-brush-btn" data-brush="water" title="三层晕染叠加，边缘柔和过渡"><span class="brush-icon">◌</span><span class="brush-label">水彩</span><span class="brush-desc">多层晕染</span></button>
+          <button class="solo-brush-btn" data-brush="crayon" title="粗糙纹理双线叠加，儿童涂鸦风"><span class="brush-icon">◫</span><span class="brush-label">蜡笔</span><span class="brush-desc">粗糙涂鸦</span></button>
+          <button class="solo-brush-btn" data-brush="glow" title="柔光发光效果，适合高亮标记"><span class="brush-icon">◎</span><span class="brush-label">荧光</span><span class="brush-desc">柔光高亮</span></button>
+          <button class="solo-brush-btn" data-brush="rainbow" title="色相随笔画流动，一笔画出七彩"><span class="brush-icon">🌈</span><span class="brush-label">彩虹</span><span class="brush-desc">七彩流动</span></button>
+          <button class="solo-brush-btn" data-brush="splatter" title="随机墨点飞溅，模拟甩笔效果"><span class="brush-icon">💦</span><span class="brush-label">泼溅</span><span class="brush-desc">墨点飞溅</span></button>
+          <button class="solo-brush-btn" data-brush="neon" title="白光芯+彩色光晕，霓虹灯牌效果"><span class="brush-icon">💡</span><span class="brush-label">霓虹</span><span class="brush-desc">霓虹光晕</span></button>
+          <button class="solo-brush-btn" data-brush="pixel" title="方块像素格风格，8-bit 复古游戏感"><span class="brush-icon">👾</span><span class="brush-label">像素</span><span class="brush-desc">8-bit像素</span></button>
+          <button class="solo-brush-btn" data-brush="calligraphy" title="速度感应粗细变化，模拟毛笔书法"><span class="brush-icon">⌣</span><span class="brush-label">书法</span><span class="brush-desc">速度感应</span></button>
+          <button class="solo-brush-btn" data-brush="mirror" title="垂直镜像，一笔双画，画左得右"><span class="brush-icon">🪞</span><span class="brush-label">镜像</span><span class="brush-desc">左右对称</span></button>
+          <button class="solo-brush-btn" data-brush="kaleidoscope" title="6重旋转对称，一笔出万花筒花纹"><span class="brush-icon">🌸</span><span class="brush-label">万花筒</span><span class="brush-desc">六重旋转</span></button>
+          <button class="solo-brush-btn" data-brush="sponge" title="不规则孔洞纹理，海绵蘸颜料拍打效果"><span class="brush-icon">🧽</span><span class="brush-label">海绵</span><span class="brush-desc">孔洞纹理</span></button>
+          <button class="solo-brush-btn" data-brush="glitch" title="RGB通道偏移，故障艺术撕裂效果"><span class="brush-icon">🔥</span><span class="brush-label">故障</span><span class="brush-desc">RGB撕裂</span></button>
+          <button class="solo-brush-btn" data-brush="invert" title="颜色反转，描过区域色彩颠倒"><span class="brush-icon">💫</span><span class="brush-label">反相</span><span class="brush-desc">色彩反转</span></button>
+          <button class="solo-brush-btn" data-brush="charcoal" title="粗糙颗粒碳条质感，素描风格"><span class="brush-icon">🖍</span><span class="brush-label">炭笔</span><span class="brush-desc">颗粒素描</span></button>
+          <button class="solo-brush-btn" data-brush="screen" title="增亮混合，越画越亮，适合高光"><span class="brush-icon">💡</span><span class="brush-label">增亮</span><span class="brush-desc">屏幕增亮</span></button>
+          <button class="solo-brush-btn eraser-btn" data-brush="eraser" title="擦除画面内容，还原白色背景"><span class="brush-icon">⌫</span><span class="brush-label">橡皮</span><span class="brush-desc">擦除还原</span></button>
+        </div>
+      </div>
+      <!-- 辅助工具行 v8.13 -->
+      <div class="solo-row solo-tools-row">
+        <button class="solo-tool-btn" data-tool="select" title="选择/移动贴图（点击选中，拖动移动，Delete删除）">🖱</button>
+        <span class="tool-sep">|</span>
+        <button class="solo-tool-btn" data-tool="line" title="直线（拖拽绘制）">📏</button>
+        <button class="solo-tool-btn" data-tool="rect" title="矩形（拖拽绘制）">⬜</button>
+        <button class="solo-tool-btn" data-tool="circle" title="圆形（拖拽绘制）">⭕</button>
+        <button class="solo-tool-btn" data-tool="triangle" title="三角形（拖拽绘制）">🔺</button>
+        <span class="tool-sep">|</span>
+        <button class="solo-tool-btn" data-tool="fill" title="填充（点击封闭区域）">🪣</button>
+        <button class="solo-tool-btn" data-tool="eyedropper" title="取色（点击取色）">💉</button>
+        <button class="solo-tool-btn" data-tool="text" title="文字（点击输入）">📝</button>
+      </div>
+      <!-- 粗细 -->
+      <div class="solo-row">
+        <span class="solo-label">粗细 <span id="solo-size-val">3</span></span>
+        <input type="range" id="solo-size-slider" class="solo-slider" min="1" max="50" value="3">
+      </div>
+      <!-- 不透明度 -->
+      <div class="solo-row">
+        <span class="solo-label">不透明 <span id="solo-opacity-val">100</span>%</span>
+        <input type="range" id="solo-opacity-slider" class="solo-slider" min="5" max="100" value="100">
+      </div>
+      <!-- 笔尖硬度 -->
+      <div class="solo-row">
+        <span class="solo-label">硬度 <span id="solo-smooth-val">50</span></span>
+        <input type="range" id="solo-smooth-slider" class="solo-slider" min="0" max="100" value="50">
+      </div>
+      <!-- 颜色 -->
+      <div class="solo-row">
+        <span class="solo-label">颜色</span>
+        <div class="solo-colors" id="solo-colors-wrap">
+          <button class="solo-color-btn active" data-color="#000000" style="background:#000000"></button>
+          <button class="solo-color-btn" data-color="#333333" style="background:#333333"></button>
+          <button class="solo-color-btn" data-color="#666666" style="background:#666666"></button>
+          <button class="solo-color-btn" data-color="#E74C3C" style="background:#E74C3C"></button>
+          <button class="solo-color-btn" data-color="#E67E22" style="background:#E67E22"></button>
+          <button class="solo-color-btn" data-color="#F1C40F" style="background:#F1C40F"></button>
+          <button class="solo-color-btn" data-color="#2ECC71" style="background:#2ECC71"></button>
+          <button class="solo-color-btn" data-color="#1ABC9C" style="background:#1ABC9C"></button>
+          <button class="solo-color-btn" data-color="#3498DB" style="background:#3498DB"></button>
+          <button class="solo-color-btn" data-color="#9B59B6" style="background:#9B59B6"></button>
+          <button class="solo-color-btn" data-color="#FF6B9D" style="background:#FF6B9D"></button>
+          <button class="solo-color-btn" data-color="#FFFFFF" style="background:#FFFFFF"></button>
+          <button class="solo-color-btn" data-color="#8B4513" style="background:#8B4513"></button>
+          <input type="color" id="solo-custom-color" class="custom-color-input" value="#000000" title="自定义颜色">
+        </div>
+      </div>
+      <!-- 操作按钮 -->
+      <div class="solo-row solo-actions">
+        <button id="solo-undo-btn" class="btn btn-sm btn-secondary" disabled>↩ 撤销</button>
+        <button id="solo-redo-btn" class="btn btn-sm btn-secondary" disabled>↪ 重做</button>
+        <button id="solo-clear-btn" class="btn btn-sm btn-secondary">🗑 清空</button>
+        <button id="solo-import-btn" class="btn btn-sm btn-secondary">📷 贴图</button>
+        <button id="solo-save-btn" class="btn btn-sm btn-primary">💾 保存</button>
+      </div>
+      <input type="file" id="solo-import-file" accept="image/*" style="display:none">
+      <!-- 每日挑战 -->
+      <div class="solo-row solo-daily hidden" id="solo-daily-bar">
+        <span class="solo-label">📅 今日挑战：<b id="daily-word"></b></span>
+        <button id="daily-submit-btn" class="btn btn-sm btn-accent">提交作品</button>
+        <button id="daily-cancel-btn" class="btn btn-sm btn-secondary">退出挑战</button>
+      </div>
+      <!-- 成就展示 -->
+      <div id="achievements-badge" class="achievements-badge hidden" title="成就">
+        <span id="achievements-count">0</span>🏆
+      </div>
+    </div>
+    <!-- v8.13 状态栏 -->
+    <div id="solo-status-bar" class="solo-status-bar">
+      <span class="status-item" id="status-tool">✏️ 钢笔</span>
+      <span class="status-sep">|</span>
+      <span class="status-item" id="status-color">⬤ <span id="status-color-name">黑色</span></span>
+      <span class="status-sep">|</span>
+      <span class="status-item" id="status-layer">📑 图层1</span>
+      <span class="status-sep">|</span>
+      <span class="status-item" id="status-mode">🖌 普通</span>
+      <span class="status-sep">|</span>
+      <span class="status-item" id="status-zoom">🔍 100%</span>
+    </div>
+  </div>
+
+  <!-- 自定义确认弹窗 -->
+  <div id="confirm-dialog" class="confirm-overlay hidden">
+    <div class="confirm-box">
+      <p id="confirm-msg" class="confirm-msg"></p>
+      <div class="confirm-btns">
+        <button id="confirm-cancel" class="btn btn-secondary">取消</button>
+        <button id="confirm-ok" class="btn btn-primary">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
