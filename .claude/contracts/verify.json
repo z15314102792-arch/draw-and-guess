@@ -1,0 +1,7 @@
+{
+  "name": "你画我猜-验收",
+  "required_file": "verify-results.json",
+  "required_keys": ["project", "version", "checks", "summary"],
+  "min_size_bytes": 200,
+  "active": true
+}

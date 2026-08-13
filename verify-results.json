@@ -1,0 +1,65 @@
+{
+  "project": "你画我猜",
+  "version": "1.0.0",
+  "timestamp": "2026-08-11T11:35:05.050Z",
+  "checks": [
+    {
+      "name": "核心文件存在",
+      "pass": true,
+      "data": {
+        "server.js": 38492,
+        "solo-v3.js": 20251,
+        "package.json": 495
+      }
+    },
+    {
+      "name": "server.js 语法正确",
+      "pass": true,
+      "data": {
+        "size": 35126,
+        "lines": 1175
+      }
+    },
+    {
+      "name": "solo-v3.js 语法正确",
+      "pass": true,
+      "data": {
+        "size": 20175,
+        "lines": 183
+      }
+    },
+    {
+      "name": "package.json 有效",
+      "pass": true,
+      "data": {
+        "name": "draw-and-guess",
+        "version": "1.0.0",
+        "has_scripts": true,
+        "has_dependencies": true,
+        "scripts": [
+          "start",
+          "dev",
+          "public"
+        ]
+      }
+    },
+    {
+      "name": "服务端路由结构",
+      "pass": true,
+      "data": {
+        "found_routes": [
+          "HTTP服务",
+          "WebSocket",
+          "绘画路由",
+          "猜词路由",
+          "房间管理"
+        ]
+      }
+    }
+  ],
+  "summary": {
+    "total": 5,
+    "passed": 5,
+    "failed": 0
+  }
+}
